@@ -3,6 +3,7 @@
 ## 1. No File Modifications Without Explicit Command
 - NEVER create, edit, patch, or delete files unless the user gives an explicit command (e.g. "proceed", "go ahead", "gen", "apply", "do it")
 - When the user asks for suggestions, proposals, or approaches, present them as text only — do NOT apply changes without user approval
+- "analyze", "check", "원인분석", "검증" requests MUST stop at presenting findings — NEVER proceed to code modification
 
 ## 2. Strict CLAUDE.md Compliance
 - If an action would violate this project's CLAUDE.md, ask the user for explicit consent first

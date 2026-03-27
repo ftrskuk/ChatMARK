@@ -85,6 +85,7 @@ const state = {
   scrollProgressValue: 0,
   highlightedElement: null,
   highlightedInlineNode: null,
+  highlightedInlineNodes: [],
 
   // ---- Storage reload suppression (timestamp-based) ----
   // 비유: "내가 방금 보낸 편지는 무시" 표시. 타임스탬프로 800ms 이내 변경을 건너뜁니다.

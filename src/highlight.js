@@ -7,13 +7,15 @@ import state from './state.js';
 import {
   HIGHLIGHT_CLASS,
   POST_SCROLL_TARGET_TOP_OFFSET,
+  HIGHLIGHT_EXTRA_TOP_MARGIN,
   POST_SCROLL_CONTAINER_PADDING,
   MESSAGE_SELECTOR
 } from './constants.js';
 import { normalizeText, clamp, normalizeInteger } from './text.js';
 import {
   findMessageContainer, getMessageRole, getElementText,
-  collectAnchorBlocks, findAnchorBlock, canElementContainText
+  collectAnchorBlocks, findAnchorBlock, canElementContainText,
+  findUserMessageTextContainer
 } from './dom.js';
 import { isCodeAnchor, formatPopupDisplayText } from './capture.js';
 import {
@@ -21,7 +23,8 @@ import {
   findBestTextOccurrence, findBestCodeOccurrence,
   scoreOccurrenceEdge, matchesSelectionContextFingerprint,
   matchesCodeSelectionContextFingerprint,
-  hasUserExactAnchor, findUserExactMatchInMessage
+  hasUserExactAnchor, findUserExactMatchInMessage,
+  resolveMultiBlockTargetBlocks
 } from './resolve.js';
 import { isSandboxCardAnchor } from './sandbox-card.js';
 
@@ -95,10 +98,37 @@ export function scheduleTargetHighlight(target, bookmark, options) {
 
 function runTargetHighlight(target, bookmark, options) {
   const nextOptions = options || {};
+
+  // User message-specific inline highlighting
+  var anchor = bookmark && bookmark.anchor ? bookmark.anchor : null;
+  if (anchor && anchor.messageRole === "user") {
+    var message = findMessageContainer(target) || target;
+    var userTextContainer = findUserMessageTextContainer(message);
+    if (userTextContainer) {
+      var userResult = highlightInlineText(userTextContainer, bookmark, null);
+      if (userResult) {
+        if (_advanceScrollProgress) _advanceScrollProgress(0.76);
+        microScrollHighlightIntoView(userResult.node, userResult.mode);
+        return;
+      }
+    }
+  }
+
   if (nextOptions.preferBlockHighlight || shouldPreferBlockHighlight(bookmark)) {
     pulseTarget(target);
     if (_finishHiddenScrollTransaction) _finishHiddenScrollTransaction();
     return;
+  }
+
+  // Try multi-block highlight first for cross-block selections
+  var multiBlocks = resolveMultiBlockTargetBlocks(bookmark);
+  if (multiBlocks && multiBlocks.length > 1) {
+    var multiResult = highlightMultiBlockText(multiBlocks, bookmark);
+    if (multiResult) {
+      if (_advanceScrollProgress) _advanceScrollProgress(0.76);
+      microScrollHighlightIntoView(multiResult.node, multiResult.mode);
+      return;
+    }
   }
 
   const highlightResult = highlightInlineText(target, bookmark, nextOptions.precomputedMatch || null);
@@ -228,10 +258,25 @@ export function clearHighlightState() {
   state.postScrollTimer = 0;
   window.clearTimeout(state.scrollMaskRevealTimer);
   state.scrollMaskRevealTimer = 0;
+  if (state.highlightedInlineNodes && state.highlightedInlineNodes.length) {
+    state.highlightedInlineNodes.forEach(function (n) {
+      if (n && n.parentNode) { unwrapHighlightNode(n); }
+    });
+    state.highlightedInlineNodes = [];
+  }
   if (state.highlightedInlineNode && state.highlightedInlineNode.parentNode) {
     unwrapHighlightNode(state.highlightedInlineNode);
     state.highlightedInlineNode = null;
   }
+  // Safety net: remove any remaining highlight spans in the document
+  try {
+    var remaining = document.querySelectorAll("span.cgptbm-inline-highlight");
+    for (var ri = 0; ri < remaining.length; ri += 1) {
+      if (remaining[ri].parentNode) {
+        unwrapHighlightNode(remaining[ri]);
+      }
+    }
+  } catch (cleanupError) {}
   if (state.highlightedElement) {
     state.highlightedElement.classList.remove(HIGHLIGHT_CLASS);
     state.highlightedElement.classList.remove(HIGHLIGHT_CLASS + "--residual");
@@ -547,6 +592,29 @@ function buildNormalizedOffsetMatch(textMap, startIndex, endIndex, options) {
 // DOM 래핑 & 언래핑
 // ============================================================
 
+function getTextNodesInRange(range) {
+  var results = [];
+  var walker = document.createTreeWalker(
+    range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+      ? range.commonAncestorContainer.parentNode
+      : range.commonAncestorContainer,
+    NodeFilter.SHOW_TEXT,
+    null
+  );
+  var node = walker.nextNode();
+  while (node) {
+    if (range.intersectsNode(node)) {
+      var startOffset = (node === range.startContainer) ? range.startOffset : 0;
+      var endOffset = (node === range.endContainer) ? range.endOffset : node.nodeValue.length;
+      if (startOffset < endOffset) {
+        results.push({ node: node, startOffset: startOffset, endOffset: endOffset });
+      }
+    }
+    node = walker.nextNode();
+  }
+  return results;
+}
+
 function wrapTextMatch(match) {
   if (!match || !match.startNode || !match.endNode) {
     return null;
@@ -564,14 +632,151 @@ function wrapTextMatch(match) {
       return null;
     }
 
+    // Try surroundContents first (no ancestor splitting)
     const highlight = document.createElement("span");
     highlight.className = "cgptbm-inline-highlight";
-    highlight.appendChild(range.extractContents());
-    range.insertNode(highlight);
-    return highlight;
+    try {
+      range.surroundContents(highlight);
+      return highlight;
+    } catch (surroundError) {
+      // Range crosses element boundaries — wrap each text node individually
+    }
+
+    var textNodes = getTextNodesInRange(range);
+    if (!textNodes.length) {
+      return null;
+    }
+
+    var firstSpan = null;
+    for (var i = 0; i < textNodes.length; i += 1) {
+      try {
+        var subRange = document.createRange();
+        subRange.setStart(textNodes[i].node, textNodes[i].startOffset);
+        subRange.setEnd(textNodes[i].node, textNodes[i].endOffset);
+        var span = document.createElement("span");
+        span.className = "cgptbm-inline-highlight";
+        subRange.surroundContents(span);
+        if (!firstSpan) {
+          firstSpan = span;
+        }
+      } catch (subError) {
+        // Skip this text node if wrapping fails
+      }
+    }
+
+    return firstSpan;
   } catch (error) {
     return null;
   }
+}
+
+// ============================================================
+// Multi-block highlight
+// ============================================================
+
+export function highlightMultiBlockText(blocks, bookmark) {
+  if (!blocks || !blocks.length || !bookmark) {
+    return null;
+  }
+
+  var anchor = bookmark && bookmark.anchor ? bookmark.anchor : null;
+  var fullText = normalizeText(
+    (anchor && anchor.selectionTextRaw) || (anchor && anchor.selectionText) || ""
+  );
+  if (!fullText || fullText.length < 2) {
+    return null;
+  }
+
+  // Build per-block text and find each block's portion of the full selection
+  var highlightNodes = [];
+  var remainingText = fullText.toLowerCase();
+
+  for (var i = 0; i < blocks.length; i += 1) {
+    var block = blocks[i];
+    if (!block || !block.isConnected) {
+      continue;
+    }
+
+    var textMap = buildTargetTextMap(block);
+    if (!textMap || !textMap.normalizedText) {
+      continue;
+    }
+
+    var blockNormalized = textMap.normalizedText.toLowerCase();
+    if (!blockNormalized) {
+      continue;
+    }
+
+    // Find the portion of remainingText that overlaps with this block
+    var needle = null;
+    var bestOverlapLength = 0;
+
+    // Try matching the beginning of remainingText against this block's text
+    for (var len = Math.min(remainingText.length, blockNormalized.length); len >= 4; len -= 1) {
+      var candidate = remainingText.slice(0, len);
+      if (blockNormalized.indexOf(candidate) !== -1) {
+        needle = candidate;
+        bestOverlapLength = len;
+        break;
+      }
+    }
+
+    if (!needle) {
+      continue;
+    }
+
+    // Find the occurrence in this block
+    var occurrence = findBestTextOccurrence(textMap.normalizedText, needle, null);
+    if (!occurrence) {
+      continue;
+    }
+
+    var startMap = textMap.ranges[occurrence.index];
+    var endMap = textMap.ranges[occurrence.end - 1];
+    if (!startMap || !endMap) {
+      continue;
+    }
+
+    var startPos = rawOffsetToDomPosition(textMap.segments, startMap.start, false);
+    var endPos = rawOffsetToDomPosition(textMap.segments, endMap.end, true);
+    if (!startPos || !endPos) {
+      continue;
+    }
+
+    var match = {
+      startNode: startPos.node,
+      startOffset: startPos.offset,
+      endNode: endPos.node,
+      endOffset: endPos.offset
+    };
+
+    var highlightNode = wrapTextMatch(match);
+    if (highlightNode) {
+      highlightNodes.push(highlightNode);
+    }
+
+    // Advance remainingText past the matched portion
+    remainingText = remainingText.slice(bestOverlapLength).replace(/^\s+/, "");
+    if (!remainingText) {
+      break;
+    }
+  }
+
+  if (!highlightNodes.length) {
+    return null;
+  }
+
+  // Store all highlight nodes; clearHighlightState will clean them up
+  state.highlightedInlineNode = highlightNodes[0];
+  state.highlightedInlineNodes = highlightNodes;
+  state.highlightTimer = window.setTimeout(clearHighlightState, 2000);
+
+  return {
+    node: highlightNodes[0],
+    nodes: highlightNodes,
+    shouldMicroScroll: true,
+    mode: "text"
+  };
 }
 
 export function unwrapHighlightNode(node) {
@@ -623,7 +828,7 @@ function runPostScrollAlignment(node, mode, attempt) {
 
   if (_advanceScrollProgress) _advanceScrollProgress(Math.min(0.94, 0.84 + attempt * 0.06));
   const threshold = attempt >= 2 ? 2 : 6;
-  const behavior = attempt === 0 ? "smooth" : "auto";
+  const behavior = "auto";
   const innerAligned = alignHighlightNodeWithinScrollableAncestor(node, mode, behavior, threshold);
   const pageAligned = alignHighlightNodeToTopOffset(node, mode, behavior, threshold);
   const aligned = innerAligned && pageAligned;
@@ -649,9 +854,9 @@ function getAdaptiveTopOffset(node, mode) {
   const contextAbove = Math.min(nodeRect.top - messageRect.top, window.innerHeight * 0.25);
 
   if (mode === "code") {
-    return Math.max(80, Math.min(nodeRect.top - contextAbove, window.innerHeight * 0.30));
+    return Math.max(80, Math.min(nodeRect.top - contextAbove, window.innerHeight * 0.30)) + HIGHLIGHT_EXTRA_TOP_MARGIN;
   }
-  return Math.max(80, Math.min(nodeRect.top - contextAbove, window.innerHeight * 0.25));
+  return Math.max(80, Math.min(nodeRect.top - contextAbove, window.innerHeight * 0.25)) + HIGHLIGHT_EXTRA_TOP_MARGIN;
 }
 
 function alignHighlightNodeToTopOffset(node, mode, behavior, threshold) {
@@ -700,7 +905,8 @@ function alignHighlightNodeWithinScrollableAncestor(node, mode, behavior, thresh
   }
 
   const containerRect = container.getBoundingClientRect();
-  const desiredTop = containerRect.top + POST_SCROLL_CONTAINER_PADDING;
+  const codePadding = mode === "code" ? 150 : 50;
+  const desiredTop = containerRect.top + POST_SCROLL_CONTAINER_PADDING + codePadding;
   const delta = rect.top - desiredTop;
   if (Math.abs(delta) <= threshold) {
     return true;

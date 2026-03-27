@@ -260,6 +260,26 @@ export function getMessageRole(element) {
   ].join(" "));
 }
 
+export function findUserMessageTextContainer(message) {
+  if (!message || getMessageRole(message) !== "user") {
+    return null;
+  }
+
+  // Look for div with direct text content (e.g., ChatGPT's whitespace-pre-wrap div)
+  var divs = message.querySelectorAll("div");
+  for (var i = 0; i < divs.length; i += 1) {
+    var div = divs[i];
+    var hasDirectText = Array.from(div.childNodes).some(function (child) {
+      return child.nodeType === Node.TEXT_NODE && child.nodeValue.trim().length >= 2;
+    });
+    if (hasDirectText && !div.querySelector(BLOCK_SELECTOR) && isVisibleBlock(div)) {
+      return div;
+    }
+  }
+
+  return null;
+}
+
 export function getElementText(element) {
   if (!element) {
     return "";

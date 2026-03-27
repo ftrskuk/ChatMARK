@@ -746,6 +746,57 @@ function resolveMultiBlockTarget(anchor, contexts) {
   return bestCandidate.contexts[0].block;
 }
 
+export function resolveMultiBlockTargetBlocks(bookmark) {
+  if (!bookmark || !bookmark.anchor) {
+    return null;
+  }
+  var anchor = bookmark.anchor;
+  if (!hasMultiBlockSelectionSpan(anchor)) {
+    return null;
+  }
+  var contexts = buildBlockContexts();
+  if (!contexts.length) {
+    return null;
+  }
+
+  var bestCandidate = null;
+  var secondBestCandidate = null;
+
+  contexts.forEach(function (context, startIndex) {
+    if (!isPlausibleMultiBlockSpanStart(anchor, context)) {
+      return;
+    }
+    var maxEndIndex = Math.min(
+      contexts.length - 1,
+      startIndex + Math.max(6, Math.max(2, anchor.selectionSpanBlockCount) + 3)
+    );
+    for (var endIndex = startIndex + 1; endIndex <= maxEndIndex; endIndex += 1) {
+      var spanContexts = contexts.slice(startIndex, endIndex + 1);
+      if (!isPlausibleMultiBlockSpan(anchor, spanContexts)) {
+        continue;
+      }
+      var candidate = scoreMultiBlockSpanCandidate(anchor, spanContexts);
+      if (!candidate) {
+        continue;
+      }
+      if (!bestCandidate || isBetterMultiBlockSpanCandidate(candidate, bestCandidate)) {
+        secondBestCandidate = bestCandidate;
+        bestCandidate = candidate;
+        continue;
+      }
+      if (!secondBestCandidate || isBetterMultiBlockSpanCandidate(candidate, secondBestCandidate)) {
+        secondBestCandidate = candidate;
+      }
+    }
+  });
+
+  if (!bestCandidate || !shouldResolveFromMultiBlockSpan(bestCandidate, secondBestCandidate)) {
+    return null;
+  }
+
+  return bestCandidate.contexts.map(function (ctx) { return ctx.block; });
+}
+
 function hasMultiBlockSelectionSpan(anchor) {
   return Boolean(
     anchor &&
