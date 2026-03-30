@@ -439,14 +439,117 @@ async function handleBookmarkClick(bookmarkId) {
   });
 }
 
-function handleBookmarkEdit(bookmarkId, event) {
-  if (releaseResizeLockedExpandedBookmarkForInteraction(bookmarkId)) {
-    syncExpandedBookmarkState();
-  }
+// ---- Inline label edit ----
 
+var _inlineEditCommitting = false;
+
+function enterInlineEdit(tab, bookmarkId, currentLabel) {
+  if (state.editLockedBookmarkId) {
+    commitInlineEdit();
+  }
+  state.editLockedBookmarkId = bookmarkId;
+  syncExpandedBookmarkState();
+
+  const main = tab.querySelector(".cgptbm-tab__main");
+  const label = tab.querySelector(".cgptbm-tab__label");
+  if (!main || !label) return;
+
+  label.style.visibility = "hidden";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "cgptbm-tab__inline-edit";
+  input.value = currentLabel;
+  input.dataset.bookmarkId = bookmarkId;
+  input.dataset.originalValue = currentLabel;
+
+  input.addEventListener("keydown", function (e) {
+    e.stopPropagation();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitInlineEdit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancelInlineEdit();
+    }
+  });
+  input.addEventListener("mousedown", function (e) { e.stopPropagation(); });
+  input.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+  input.addEventListener("click", function (e) { e.stopPropagation(); });
+  // blur = cancel (not save)
+  input.addEventListener("blur", function () {
+    if (!_inlineEditCommitting) {
+      cancelInlineEdit();
+    }
+  });
+
+  const hint = document.createElement("span");
+  hint.className = "cgptbm-tab__inline-edit-hint";
+  hint.textContent = "Enter: save · Esc: cancel";
+
+  main.appendChild(input);
+  main.appendChild(hint);
+  input.focus();
+  input.select();
+}
+
+function commitInlineEdit() {
+  _inlineEditCommitting = true;
+  const input = state.layer ? state.layer.querySelector(".cgptbm-tab__inline-edit") : null;
+  if (input) {
+    const bookmarkId = input.dataset.bookmarkId || "";
+    const newLabel = input.value.trim();
+    const tab = input.closest(".cgptbm-tab");
+    const label = tab ? tab.querySelector(".cgptbm-tab__label") : null;
+    cleanupInlineEdit(input);
+    const bookmark = state.currentBookmarks.find(function (b) { return b.id === bookmarkId; });
+    if (bookmark && newLabel) {
+      // Update label text immediately so sync doesn't overwrite with old value
+      if (label) label.textContent = newLabel;
+      updateBookmarkLabel(bookmarkId, newLabel, bookmark.colorIndex);
+    }
+  }
+  state.editLockedBookmarkId = "";
+  _inlineEditCommitting = false;
+  syncExpandedBookmarkState();
+}
+
+function cancelInlineEdit() {
+  _inlineEditCommitting = true;
+  const input = state.layer ? state.layer.querySelector(".cgptbm-tab__inline-edit") : null;
+  if (input) {
+    cleanupInlineEdit(input);
+  }
+  state.editLockedBookmarkId = "";
+  _inlineEditCommitting = false;
+  syncExpandedBookmarkState();
+}
+
+function cleanupInlineEdit(input) {
+  const tab = input.closest(".cgptbm-tab");
+  if (tab) {
+    const label = tab.querySelector(".cgptbm-tab__label");
+    if (label) label.style.visibility = "";
+    const hint = tab.querySelector(".cgptbm-tab__inline-edit-hint");
+    if (hint) hint.remove();
+  }
+  input.remove();
+}
+
+function handleBookmarkEdit(bookmarkId, event) {
   if (event) {
     event.preventDefault();
     event.stopPropagation();
+  }
+
+  // Toggle: if already editing this bookmark, commit and exit
+  if (state.editLockedBookmarkId === bookmarkId) {
+    commitInlineEdit();
+    return;
+  }
+
+  if (releaseResizeLockedExpandedBookmarkForInteraction(bookmarkId)) {
+    syncExpandedBookmarkState();
   }
 
   const bookmark = state.currentBookmarks.find(function (item) {
@@ -456,17 +559,13 @@ function handleBookmarkEdit(bookmarkId, event) {
     return;
   }
 
-  const popupPosition = event && event.currentTarget
-    ? getEditPopupPositionForTab(
-      event.currentTarget.closest ? event.currentTarget.closest(".cgptbm-tab") : null
-    )
+  const tab = event && event.currentTarget
+    ? (event.currentTarget.closest ? event.currentTarget.closest(".cgptbm-tab") : null)
     : null;
+  if (!tab) return;
 
-  openSavePopup(bookmark.anchor, popupPosition, {
-    bookmarkId: bookmark.id,
-    initialValue: bookmark.label || bookmark.snippet || getDefaultPopupLabel(bookmark.anchor),
-    colorIndex: bookmark.colorIndex
-  });
+  const labelText = bookmark.label || bookmark.snippet || "Bookmark";
+  enterInlineEdit(tab, bookmarkId, labelText);
 }
 
 export function handleDocumentPointerDown(event) {
@@ -1531,6 +1630,7 @@ function createBookmarkHistoryControls() {
   });
   postitExtendButton.addEventListener("mouseleave", function () {
     if (postitExtendButton.disabled) return;
+    postitExtendButton.style.boxShadow = "";
     delete postitExtendButton.dataset.preClickPostit;
     var ap = postitExtendButton.dataset.allPostits === "1";
     var oldIcon = postitExtendButton.querySelector(".cgptbm-history-controls__icon");
@@ -1737,6 +1837,7 @@ async function handlePostitExtend(event) {
       var oldIcon = button.querySelector(".cgptbm-history-controls__icon");
       var newIcon = createButtonSvgIcon(hoverIconType);
       if (oldIcon) button.replaceChild(newIcon, oldIcon);
+      button.style.boxShadow = "inset 0 2px 3px hsla(230, 30%, 40%, 0.5), inset 0 -1px 2px hsla(230, 27%, 8%, 0.3)";
       button.dataset.preClickPostit = wasAllPostits ? "1" : "0";
     }
   } finally {
@@ -2662,7 +2763,7 @@ export function syncRenderedBookmarkTabContent(tab, bookmark) {
     button.title = labelText;
     button.setAttribute("aria-label", labelText);
   }
-  if (label) {
+  if (label && bookmark.id !== state.editLockedBookmarkId) {
     label.textContent = labelText;
     var nq = getNormalizedBookmarkSearchQuery(state.bookmarkSearchQuery);
     if (nq) highlightMatchInElement(label, nq);
@@ -2972,6 +3073,7 @@ function canReorderBookmarkTabs() {
     !state.bookmarkSearchQuery &&
     !state.popup &&
     !state.colorPicker &&
+    !state.editLockedBookmarkId &&
     !state.popupResizeSession &&
     Array.isArray(state.currentBookmarks) &&
     state.currentBookmarks.length > 1
@@ -4172,14 +4274,18 @@ export function createTabElement(options) {
     });
     actionButton.addEventListener("click", function (event) {
       event.stopPropagation();
-      if (action.className === "cgptbm-tab__action--expand-pin" || action.className === "cgptbm-tab__action--pin") {
-        actionButton.dataset.preClick = actionButton.classList.contains("is-selected") ? "pinned" : "unpinned";
+      if (action.className === "cgptbm-tab__action--expand-pin" || action.className === "cgptbm-tab__action--pin" || action.className === "cgptbm-tab__action--edit") {
+        if (action.className !== "cgptbm-tab__action--edit") {
+          actionButton.dataset.preClick = actionButton.classList.contains("is-selected") ? "pinned" : "unpinned";
+        }
+        actionButton.style.boxShadow = "inset 0 2px 3px rgba(148, 163, 184, 0.5), inset 0 -1px 2px rgba(15, 23, 42, 0.15)";
       }
       action.onClick(event);
     });
-    if (action.className === "cgptbm-tab__action--expand-pin" || action.className === "cgptbm-tab__action--pin") {
+    if (action.className === "cgptbm-tab__action--expand-pin" || action.className === "cgptbm-tab__action--pin" || action.className === "cgptbm-tab__action--edit") {
       actionButton.addEventListener("mouseleave", function () {
         delete actionButton.dataset.preClick;
+        actionButton.style.boxShadow = "";
       });
     }
     return actionButton;
