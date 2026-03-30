@@ -21,7 +21,8 @@ import {
   RAIL_OPACITY_STORAGE_KEY, RAIL_ENABLED_STORAGE_KEY,
   ADD_TAB_DEFAULT_LABEL, ADD_TAB_SUCCESS_LABEL,
   DEFAULT_RAIL_OPACITY, MIN_RAIL_OPACITY, MAX_RAIL_OPACITY,
-  HIGHLIGHT_CLASS, SELECTION_TRIGGER_LABEL
+  HIGHLIGHT_CLASS, SELECTION_TRIGGER_LABEL,
+  MAX_BOOKMARKS_PER_PAGE
 } from './constants.js';
 import {
   normalizeUrlKey, normalizeBookmarkList, normalizeColorIndex,
@@ -40,7 +41,13 @@ import {
   applyCurrentBookmarkUiState, persistBookmarkUiState,
   togglePinnedBookmark, toggleExpandedPinnedBookmark,
   isBookmarkPopupPinned, isBookmarkExpansionPinned,
-  deletePopupLayout, normalizePopupLayoutMap, persistPopupLayouts
+  deletePopupLayout, normalizePopupLayoutMap, persistPopupLayouts,
+  collapseAllBookmarks, restoreCollapsedBookmarks,
+  hasCollapseBackup, canCollapseAll, hasExpandedPinnedState,
+  expandAllBookmarks, canExpandAllTabs, isAllPinned,
+  expandAllPostits, canExpandAllPostits, isAllPostits,
+  hasExpandBackup, canExpandAll,
+  invalidateAllBulkBackups
 } from './ui-state.js';
 import {
   normalizePopupLayout, getPopupViewportMaxWidth, getPopupContentMaxWidth,
@@ -77,7 +84,7 @@ import {
   advanceScrollProgress, getOutputScrollBehavior, waitForNextPaint
 } from './scroll.js';
 import {
-  pushUndoBookmarkHistory, buildBookmarkHistoryEntry,
+  pushUndoBookmarkHistory, buildBookmarkHistoryEntry, buildStateChangeEntry,
   canUndoBookmarkHistory, canRedoBookmarkHistory,
   handleUndoBookmarkHistory, handleRedoBookmarkHistory
 } from './history.js';
@@ -87,13 +94,20 @@ import { formatPopupDisplayText, isCodeAnchor, extractStructuredPopupTextFromRan
 // Local constants (rail-specific, not shared via constants.js)
 // ============================================================
 
+const HISTORY_CONTROLS_RIGHT_OFFSET = 0;
+let _searchMatchedIds = new Set();
+let _searchDebounceTimer = 0;
 const COLLAPSED_TAB_LEFT_HOVER_ZONE_WIDTH = 40;
-const RAIL_VIEWPORT_CONTROLS_GAP = 8;
-const RAIL_VIEWPORT_BOOKMARK_INSET = -28;
+const RAIL_VIEWPORT_CONTROLS_GAP = 2;
+const RAIL_VIEWPORT_BOOKMARK_INSET = -86;
 const RAIL_VIEWPORT_LEFT_BUFFER = 18;
+const EXPANDED_TAB_RIGHT_EXTENSION = 34;
+const EXPANDED_TAB_LEFT_PADDING = 6;
+const EXPANDED_POPUP_LEFT_PADDING = 34;
 const RAIL_SCROLLBAR_MIN_THUMB_HEIGHT = 28;
 const RAIL_BOTTOM_PADDING = 24;
 const TOP_RIGHT_BLOCKER_SAFE_GAP = 12;
+const SCROLLBAR_RIGHT_OVERHANG = 52;
 const TOP_RIGHT_BLOCKER_MAX_TOP = 240;
 const TOP_RIGHT_BLOCKER_MIN_WIDTH = 120;
 const TOP_RIGHT_BLOCKER_MIN_HEIGHT = 72;
@@ -108,9 +122,9 @@ const TOP_RIGHT_BLOCKER_SELECTOR = [
   "[data-radix-popover-content]"
 ].join(", ");
 const TAB_POPUP_CLEARANCE = 16;
-const HISTORY_CONTROLS_DEFAULT_TOP = 48;
+const HISTORY_CONTROLS_DEFAULT_TOP = 60;
 const DISABLED_RAIL_OPACITY = 0;
-const BOOKMARK_SEARCH_PLACEHOLDER = "Search this page";
+const BOOKMARK_SEARCH_PLACEHOLDER = "Search in bookmark";
 
 // ============================================================
 // Internal helpers (not exported)
@@ -1145,6 +1159,22 @@ export function getNormalizedBookmarkSearchQuery(value) {
   return normalizeText(value).toLowerCase();
 }
 
+function highlightMatchInElement(el, query) {
+  var text = el.textContent;
+  var lower = text.toLowerCase();
+  var idx = lower.indexOf(query);
+  if (idx < 0) return;
+  var before = document.createTextNode(text.slice(0, idx));
+  var mark = document.createElement("mark");
+  mark.className = "cgptbm-search-match";
+  mark.textContent = text.slice(idx, idx + query.length);
+  var after = document.createTextNode(text.slice(idx + query.length));
+  el.textContent = "";
+  el.appendChild(before);
+  el.appendChild(mark);
+  el.appendChild(after);
+}
+
 // ============================================================
 // GROUP 7 — Search UI
 // ============================================================
@@ -1153,7 +1183,57 @@ function createBookmarkHistoryIcon(direction) {
   const icon = document.createElement("span");
   icon.className = "cgptbm-history-controls__icon";
   icon.setAttribute("aria-hidden", "true");
-  icon.textContent = direction === "redo" ? "\u21BB" : "\u21BA";
+  if (direction === "redo") {
+    icon.textContent = "\u21BB";
+  } else if (direction === "collapse") {
+    icon.textContent = "\u229F";
+  } else if (direction === "expand") {
+    icon.textContent = "\u229E";
+  } else if (direction === "restore") {
+    icon.textContent = "\u229E";
+  } else {
+    icon.textContent = "\u21BA";
+  }
+  return icon;
+}
+
+// ---- 독립 버튼 SVG 아이콘 ----
+
+function createButtonSvgIcon(type) {
+  const icon = document.createElement("span");
+  icon.className = "cgptbm-history-controls__icon cgptbm-history-controls__icon--svg";
+  icon.setAttribute("aria-hidden", "true");
+  if (type === "tab-collapse") {
+    // 최소화 아이콘 (가로 줄 1개)
+    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2.5" y1="6" x2="9.5" y2="6"/></svg>';
+  } else if (type === "tab-extend") {
+    // 기울어진 핀 아이콘 (몸체 + 바늘)
+    icon.innerHTML = '<svg viewBox="-5 5 48 48" width="11" height="11" fill="currentColor" stroke="none"><path d="M31 3L32.5 3L45 15.5Q45.8 17.8 43.5 17Q42.2 19.3 37.5 18L36 19.5L32 25.5Q33.9 34.9 29.5 38L10 19.5L11.5 17Q15 14.5 22.5 16L30 10.5Q29.4 5.1 31 3Z"/><path d="M15.5 30L18 31.5L6.5 44Q2.8 45.3 4 41.5L15.5 30Z"/></svg>';
+  } else if (type === "tab-extend-hover") {
+    // 기울어진 핀 아이콘 (몸체만, 바늘 제거)
+    icon.innerHTML = '<svg viewBox="-5 5 48 48" width="11" height="11" fill="currentColor" stroke="none"><path d="M31 3L32.5 3L45 15.5Q45.8 17.8 43.5 17Q42.2 19.3 37.5 18L36 19.5L32 25.5Q33.9 34.9 29.5 38L10 19.5L11.5 17Q15 14.5 22.5 16L30 10.5Q29.4 5.1 31 3Z"/></svg>';
+  } else if (type === "tab-extend-disabled") {
+    // 기울어진 핀 아이콘 (몸체만, 비활성 색상)
+    icon.innerHTML = '<svg viewBox="-5 5 48 48" width="11" height="11" fill="currentColor" stroke="none"><path d="M31 3L32.5 3L45 15.5Q45.8 17.8 43.5 17Q42.2 19.3 37.5 18L36 19.5L32 25.5Q33.9 34.9 29.5 38L10 19.5L11.5 17Q15 14.5 22.5 16L30 10.5Q29.4 5.1 31 3Z"/></svg>';
+  } else if (type === "postit-extend") {
+    // 중앙 배치 오목 삼각형 (inward와 동일)
+    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" stroke="none"><path d="M4 3L10 3L10 9Q9.5 3.5 4 3"/><path d="M8 9L2 9L2 3Q2.5 8.5 8 9"/></svg>';
+  } else if (type === "postit-extend-phase2") {
+    // 직사각형 (뒤) + 핀 아이콘 (앞)
+    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" stroke="none" style="overflow:visible"><rect x="1.5" y="5.5" width="9" height="7" rx="1" fill="#888"/><g transform="translate(1.6,0) scale(0.66)"><path d="M8 1.6C10.08 1.6 11.45 2.7 11.45 4.04C11.45 4.67 11.15 5.24 10.6 5.64L10.32 7.72L11.95 8.98C12.26 9.22 12.09 9.72 11.7 9.72H8.82V13.08C8.82 13.44 8.46 13.72 8 13.72C7.54 13.72 7.18 13.44 7.18 13.08V9.72H4.3C3.91 9.72 3.74 9.22 4.05 8.98L5.68 7.72L5.4 5.64C4.85 5.24 4.55 4.67 4.55 4.04C4.55 2.7 5.92 1.6 8 1.6Z"/><ellipse cx="8" cy="4.02" rx="2.25" ry="1.14" fill="rgba(255,255,255,0.28)"/></g></svg>';
+  } else if (type === "postit-extend-outward") {
+    // close 버튼 기본 (직각 내측, 간격 넓음)
+    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" stroke="none" style="overflow:visible"><path d="M8 -1L8 5L14 5Q8.5 4.5 8 -1"/><path d="M4 13L4 7L-2 7Q3.5 7.5 4 13"/></svg>';
+  } else if (type === "postit-close-hover") {
+    // close 호버 (close button 형태, xy간격 0)
+    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" stroke="none"><path d="M6 1L6 7L12 7Q6.5 6.5 6 1"/><path d="M6 11L6 5L0 5Q5.5 5.5 6 11"/></svg>';
+  } else if (type === "postit-open-hover") {
+    // open 호버 (원래 outward, 직각 바깥)
+    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" stroke="none" style="overflow:visible"><path d="M6 1L12 1L12 7Q11.5 1.5 6 1"/><path d="M6 11L0 11L0 5Q0.5 10.5 6 11"/></svg>';
+  } else if (type === "postit-extend-inward") {
+    // 안쪽 방향 삼각형 (직각→중심 거리≈2.83)
+    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" stroke="none"><path d="M4 3L10 3L10 9Q9.5 3.5 4 3"/><path d="M8 9L2 9L2 3Q2.5 8.5 8 9"/></svg>';
+  }
   return icon;
 }
 
@@ -1192,7 +1272,6 @@ function createBookmarkSearchRow() {
   searchWrap.appendChild(input);
   searchWrap.appendChild(clearButton);
   searchRow.appendChild(searchWrap);
-  searchRow.appendChild(status);
 
   state.searchInput = input;
   state.searchClearButton = clearButton;
@@ -1234,7 +1313,7 @@ function syncBookmarkSearchControls() {
     }
     searchInput.disabled = !state.railEnabled || (!hasBookmarks && !hasQuery);
     searchInput.placeholder = hasBookmarks || hasQuery
-      ? BOOKMARK_SEARCH_PLACEHOLDER
+      ? (state.currentBookmarks.length === 1 ? "Search Tab" : "Search Tabs")
       : "No bookmarks yet";
   }
 
@@ -1243,23 +1322,6 @@ function syncBookmarkSearchControls() {
     clearButton.disabled = !hasQuery;
   }
 
-  if (searchStatus) {
-    const statusText = getBookmarkSearchStatusText({
-      hasBookmarks: hasBookmarks,
-      hasQuery: hasQuery,
-      filteredCount: filteredCount,
-      totalCount: state.currentBookmarks.length
-    });
-    searchStatus.textContent = statusText;
-    searchStatus.hidden = !statusText;
-    searchStatus.title = statusText
-      ? getBookmarkSearchStatusTitle({
-        hasQuery: hasQuery,
-        filteredCount: filteredCount,
-        totalCount: state.currentBookmarks.length
-      })
-      : "";
-  }
 }
 
 function getBookmarkSearchStatusText(options) {
@@ -1272,7 +1334,10 @@ function getBookmarkSearchStatusText(options) {
   }
 
   if (!hasQuery) {
-    return totalCount === 1 ? "1 saved" : totalCount + " saved";
+    if (totalCount >= MAX_BOOKMARKS_PER_PAGE) {
+      return "All used";
+    }
+    return totalCount + "/" + MAX_BOOKMARKS_PER_PAGE + " bookmarks";
   }
 
   return filteredCount + "/" + totalCount + " shown";
@@ -1289,8 +1354,8 @@ function getBookmarkSearchStatusTitle(options) {
 
   if (!hasQuery) {
     return totalCount === 1
-      ? "1 bookmark is saved on this page."
-      : totalCount + " bookmarks are saved on this page.";
+      ? "1 bookmark is saved on this page. (1 of " + MAX_BOOKMARKS_PER_PAGE + ")"
+      : totalCount + " bookmarks are saved on this page. (" + totalCount + " of " + MAX_BOOKMARKS_PER_PAGE + ")";
   }
 
   return filteredCount === 1
@@ -1306,6 +1371,15 @@ export function setBookmarkSearchQuery(value) {
   }
 
   state.bookmarkSearchQuery = nextQuery;
+  var normalizedQuery = getNormalizedBookmarkSearchQuery(nextQuery);
+  _searchMatchedIds = new Set();
+  if (normalizedQuery) {
+    state.currentBookmarks.forEach(function (bm) {
+      if (bookmarkMatchesSearchQuery(bm, normalizedQuery)) {
+        _searchMatchedIds.add(bm.id);
+      }
+    });
+  }
   closeBookmarkColorPicker();
   closeSavePopup();
   state.hoveredBookmarkId = "";
@@ -1315,12 +1389,14 @@ export function setBookmarkSearchQuery(value) {
 }
 
 function handleBookmarkSearchInput(event) {
-  const target = event && event.currentTarget;
+  var target = event && event.currentTarget;
   if (!(target instanceof HTMLInputElement)) {
     return;
   }
-
-  setBookmarkSearchQuery(target.value);
+  clearTimeout(_searchDebounceTimer);
+  _searchDebounceTimer = setTimeout(function () {
+    setBookmarkSearchQuery(target.value);
+  }, 120);
 }
 
 function handleBookmarkSearchClear(event) {
@@ -1328,6 +1404,7 @@ function handleBookmarkSearchClear(event) {
     event.preventDefault();
     event.stopPropagation();
   }
+  clearTimeout(_searchDebounceTimer);
 
   setBookmarkSearchQuery("");
   if (state.searchInput) {
@@ -1342,9 +1419,12 @@ function createBookmarkHistoryControls() {
   const topRow = document.createElement("div");
   topRow.className = "cgptbm-history-controls__row";
 
+  const undoRedoCapsule = document.createElement("div");
+  undoRedoCapsule.className = "cgptbm-history-controls__capsule";
+
   const undoButton = document.createElement("button");
   undoButton.type = "button";
-  undoButton.className = "cgptbm-history-controls__button";
+  undoButton.className = "cgptbm-history-controls__capsule-button";
   undoButton.dataset.historyAction = "undo";
   undoButton.title = "Undo bookmark add or remove";
   undoButton.setAttribute("aria-label", "Undo bookmark add or remove");
@@ -1354,13 +1434,16 @@ function createBookmarkHistoryControls() {
 
   const redoButton = document.createElement("button");
   redoButton.type = "button";
-  redoButton.className = "cgptbm-history-controls__button";
+  redoButton.className = "cgptbm-history-controls__capsule-button";
   redoButton.dataset.historyAction = "redo";
   redoButton.title = "Redo bookmark add or remove";
   redoButton.setAttribute("aria-label", "Redo bookmark add or remove");
   redoButton.onmousedown = preventFocusSteal;
   redoButton.onclick = handleRedoBookmarkHistory;
   redoButton.appendChild(createBookmarkHistoryIcon("redo"));
+
+  undoRedoCapsule.appendChild(undoButton);
+  undoRedoCapsule.appendChild(redoButton);
 
   const sliderRow = document.createElement("div");
   sliderRow.className = "cgptbm-history-controls__slider-row";
@@ -1393,10 +1476,74 @@ function createBookmarkHistoryControls() {
   sliderRow.appendChild(slider);
   controls.appendChild(sliderRow);
 
-  topRow.appendChild(undoButton);
-  topRow.appendChild(redoButton);
-  controls.appendChild(topRow);
+  const collapseButton = document.createElement("button");
+  collapseButton.type = "button";
+  collapseButton.className = "cgptbm-history-controls__button";
+  collapseButton.dataset.historyAction = "collapse-all";
+  collapseButton.title = "Collapse all bookmarks";
+  collapseButton.setAttribute("aria-label", "Collapse all bookmarks");
+  collapseButton.onmousedown = preventFocusSteal;
+  collapseButton.onclick = handleCollapseAllToggle;
+  collapseButton.appendChild(createButtonSvgIcon("tab-collapse"));
+
+  const tabExtendButton = document.createElement("button");
+  tabExtendButton.type = "button";
+  tabExtendButton.className = "cgptbm-history-controls__button";
+  tabExtendButton.dataset.historyAction = "tab-extend";
+  tabExtendButton.title = "Extend all tabs";
+  tabExtendButton.setAttribute("aria-label", "Extend all tabs");
+  tabExtendButton.onmousedown = preventFocusSteal;
+  tabExtendButton.onclick = handleTabExtend;
+  tabExtendButton.appendChild(createButtonSvgIcon("tab-extend"));
+  tabExtendButton.addEventListener("mouseenter", function () {
+    if (tabExtendButton.disabled) return;
+    var ap = tabExtendButton.dataset.allPinned === "1";
+    var oldIcon = tabExtendButton.querySelector(".cgptbm-history-controls__icon");
+    var newIcon = createButtonSvgIcon(ap ? "tab-extend" : "tab-extend-hover");
+    if (oldIcon) tabExtendButton.replaceChild(newIcon, oldIcon);
+  });
+  tabExtendButton.addEventListener("mouseleave", function () {
+    if (tabExtendButton.disabled) return;
+    var iconSvg = tabExtendButton.querySelector(".cgptbm-history-controls__icon--svg");
+    if (iconSvg) iconSvg.style.transform = "";
+    tabExtendButton.style.boxShadow = "";
+    var ap = tabExtendButton.dataset.allPinned === "1";
+    var oldIcon = tabExtendButton.querySelector(".cgptbm-history-controls__icon");
+    var newIcon = createButtonSvgIcon(ap ? "tab-extend-hover" : "tab-extend");
+    if (oldIcon) tabExtendButton.replaceChild(newIcon, oldIcon);
+  });
+
+  const postitExtendButton = document.createElement("button");
+  postitExtendButton.type = "button";
+  postitExtendButton.className = "cgptbm-history-controls__button";
+  postitExtendButton.dataset.historyAction = "postit-extend";
+  postitExtendButton.title = "Extend all post-its";
+  postitExtendButton.setAttribute("aria-label", "Extend all post-its");
+  postitExtendButton.onmousedown = preventFocusSteal;
+  postitExtendButton.onclick = handlePostitExtend;
+  postitExtendButton.appendChild(createButtonSvgIcon("postit-extend"));
+  postitExtendButton.addEventListener("mouseenter", function () {
+    if (postitExtendButton.disabled) return;
+    var ap = postitExtendButton.dataset.allPostits === "1";
+    var oldIcon = postitExtendButton.querySelector(".cgptbm-history-controls__icon");
+    var newIcon = createButtonSvgIcon(ap ? "postit-close-hover" : "postit-open-hover");
+    if (oldIcon) postitExtendButton.replaceChild(newIcon, oldIcon);
+  });
+  postitExtendButton.addEventListener("mouseleave", function () {
+    if (postitExtendButton.disabled) return;
+    delete postitExtendButton.dataset.preClickPostit;
+    var ap = postitExtendButton.dataset.allPostits === "1";
+    var oldIcon = postitExtendButton.querySelector(".cgptbm-history-controls__icon");
+    var newIcon = createButtonSvgIcon(ap ? "postit-extend-outward" : "postit-extend-inward");
+    if (oldIcon) postitExtendButton.replaceChild(newIcon, oldIcon);
+  });
+
+  topRow.appendChild(undoRedoCapsule);
+  topRow.appendChild(collapseButton);
+  topRow.appendChild(tabExtendButton);
+  topRow.appendChild(postitExtendButton);
   controls.appendChild(createBookmarkSearchRow());
+  controls.appendChild(topRow);
 
   return controls;
 }
@@ -1417,7 +1564,7 @@ function syncBookmarkHistoryControls(top) {
     ? Math.max(18, Math.round(top))
     : HISTORY_CONTROLS_DEFAULT_TOP;
   controls.style.top = nextTop + "px";
-  controls.style.right = COLLAPSED_TAB_VISIBLE_EDGE_WIDTH + "px";
+  controls.style.right = HISTORY_CONTROLS_RIGHT_OFFSET + "px";
   syncRailViewportTop();
 
   const undoButton = controls.querySelector('[data-history-action="undo"]');
@@ -1445,7 +1592,167 @@ function syncBookmarkHistoryControls(top) {
     toggleButton.title = state.railEnabled ? "Disable bookmark rail" : "Enable bookmark rail";
     toggleButton.setAttribute("aria-label", state.railEnabled ? "Disable bookmark rail" : "Enable bookmark rail");
   }
+
+  // ---- Tab Collapse ----
+  const collapseButton = controls.querySelector('[data-history-action="collapse-all"]');
+  if (collapseButton) {
+    const canCollapse = state.railEnabled && hasExpandedPinnedState();
+    collapseButton.disabled = !canCollapse;
+    collapseButton.classList.toggle("is-enabled", canCollapse);
+  }
+
+  // ---- Tab Extension ----
+  const tabExtendButton = controls.querySelector('[data-history-action="tab-extend"]');
+  if (tabExtendButton) {
+    const canTabExtend = state.railEnabled && canExpandAllTabs();
+    const allPinned = isAllPinned();
+    tabExtendButton.disabled = !canTabExtend;
+    tabExtendButton.classList.toggle("is-enabled", canTabExtend);
+    const tabExtIconType = !canTabExtend ? "tab-extend-disabled"
+      : allPinned ? "tab-extend-hover"
+      : "tab-extend";
+    const prevTabExtIcon = tabExtendButton.dataset.iconType || "";
+    if (prevTabExtIcon !== tabExtIconType) {
+      const oldIcon = tabExtendButton.querySelector(".cgptbm-history-controls__icon");
+      const newIcon = createButtonSvgIcon(tabExtIconType);
+      if (oldIcon) {
+        tabExtendButton.replaceChild(newIcon, oldIcon);
+      }
+      tabExtendButton.dataset.iconType = tabExtIconType;
+    }
+    tabExtendButton.dataset.allPinned = allPinned ? "1" : "0";
+  }
+
+  // ---- Post-it Extension (on/off 토글) ----
+  const postitExtendButton = controls.querySelector('[data-history-action="postit-extend"]');
+  if (postitExtendButton) {
+    const canPostitExtend = state.railEnabled && canExpandAllPostits();
+    const allPostits = isAllPostits();
+    postitExtendButton.disabled = !canPostitExtend;
+    postitExtendButton.classList.toggle("is-enabled", canPostitExtend);
+    const postitIconType = !canPostitExtend ? "postit-extend"
+      : allPostits ? "postit-extend-outward"
+      : "postit-extend";
+    const prevPostitIcon = postitExtendButton.dataset.iconType || "";
+    if (prevPostitIcon !== postitIconType) {
+      const oldIcon = postitExtendButton.querySelector(".cgptbm-history-controls__icon");
+      const newIcon = createButtonSvgIcon(postitIconType);
+      if (oldIcon) {
+        postitExtendButton.replaceChild(newIcon, oldIcon);
+      }
+      postitExtendButton.dataset.iconType = postitIconType;
+    }
+    postitExtendButton.dataset.allPostits = allPostits ? "1" : "0";
+  }
+
   syncBookmarkSearchControls();
+}
+
+// ============================================================
+// GROUP 7b — Collapse/Expand-all toggle (상호 배타)
+// ============================================================
+
+let _bulkTogglePending = false;
+
+async function handleCollapseAllToggle(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  if (_bulkTogglePending) {
+    return;
+  }
+
+  _bulkTogglePending = true;
+  try {
+    await collapseAllBookmarks();
+    syncBookmarkHistoryControlsToCurrentRail();
+  } finally {
+    _bulkTogglePending = false;
+  }
+}
+
+async function handleExpandAllToggle(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  if (_bulkTogglePending) {
+    return;
+  }
+
+  _bulkTogglePending = true;
+  try {
+    await expandAllBookmarks();
+    syncBookmarkHistoryControlsToCurrentRail();
+  } finally {
+    _bulkTogglePending = false;
+  }
+}
+
+async function handleTabExtend(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  if (_bulkTogglePending) return;
+  _bulkTogglePending = true;
+  var button = event ? event.currentTarget : null;
+  var wasAllPinned = button ? button.dataset.allPinned === "1" : false;
+  try {
+    await expandAllBookmarks();
+    syncBookmarkHistoryControlsToCurrentRail();
+    if (button && button.matches(":hover")) {
+      var hoverIconType = wasAllPinned ? "tab-extend" : "tab-extend-hover";
+      var oldIcon = button.querySelector(".cgptbm-history-controls__icon");
+      var newIcon = createButtonSvgIcon(hoverIconType);
+      if (oldIcon) button.replaceChild(newIcon, oldIcon);
+      var iconSvg = button.querySelector(".cgptbm-history-controls__icon--svg");
+      if (iconSvg) {
+        iconSvg.style.transform = wasAllPinned ? "none" : "translate(-2.2px, 2.2px)";
+      }
+      button.style.boxShadow = "inset 0 2px 3px hsla(133, 30%, 40%, 0.5), inset 0 -1px 2px hsla(133, 14%, 10%, 0.3)";
+    }
+  } finally {
+    _bulkTogglePending = false;
+  }
+}
+
+async function handlePostitExtend(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  if (_bulkTogglePending) return;
+  _bulkTogglePending = true;
+  var button = event ? event.currentTarget : null;
+  var wasAllPostits = button ? button.dataset.allPostits === "1" : false;
+  try {
+    await expandAllPostits();
+    syncBookmarkHistoryControlsToCurrentRail();
+    if (button && button.matches(":hover")) {
+      var hoverIconType = wasAllPostits ? "postit-open-hover" : "postit-close-hover";
+      var oldIcon = button.querySelector(".cgptbm-history-controls__icon");
+      var newIcon = createButtonSvgIcon(hoverIconType);
+      if (oldIcon) button.replaceChild(newIcon, oldIcon);
+      button.dataset.preClickPostit = wasAllPostits ? "1" : "0";
+    }
+  } finally {
+    _bulkTogglePending = false;
+  }
+}
+
+export function preCollapseGuard() {
+  endPopupResizeSession();
+  closeBookmarkColorPicker();
+  closeSavePopup();
+  clearBookmarkDragSession();
+  state.editLockedBookmarkId = "";
+  state.colorPickerLockedBookmarkId = "";
+  state.resizeLockedExpandedBookmarkId = "";
+  state.createPopupPreservedExpandedBookmarkId = "";
 }
 
 // ============================================================
@@ -1578,14 +1885,20 @@ export function syncRailViewportWidth(options) {
     return Math.max(maxWidth, Math.ceil(clip.getBoundingClientRect().width || 0));
   }, 0);
 
+  var popupPadding = (widestVisiblePopup && widestVisiblePopup + RAIL_VIEWPORT_LEFT_BUFFER > RAIL_VIEWPORT_WIDTH)
+    ? EXPANDED_POPUP_LEFT_PADDING : 0;
+
   const nextWidth = Math.max(
     COLLAPSED_TAB_VISIBLE_EDGE_WIDTH,
-    widestExpandedTab ? widestExpandedTab + RAIL_VIEWPORT_LEFT_BUFFER : 0,
-    widestVisiblePopup ? widestVisiblePopup + RAIL_VIEWPORT_LEFT_BUFFER : 0
+    widestExpandedTab ? widestExpandedTab + RAIL_VIEWPORT_LEFT_BUFFER + EXPANDED_TAB_LEFT_PADDING + EXPANDED_TAB_RIGHT_EXTENSION : 0,
+    widestVisiblePopup ? widestVisiblePopup + RAIL_VIEWPORT_LEFT_BUFFER + popupPadding : 0
   );
+
+  const rightExtension = widestExpandedTab ? EXPANDED_TAB_RIGHT_EXTENSION : 0;
 
   state.root.style.setProperty("--cgptbm-rail-viewport-width", nextWidth + "px");
   state.root.style.setProperty("--cgptbm-rail-scroll-hitbox-width", nextWidth + "px");
+  state.root.style.setProperty("--cgptbm-rail-scroll-hitbox-right", -rightExtension + "px");
 }
 
 export function bindTopRightUiProtectionObserver() {
@@ -1623,7 +1936,7 @@ function syncTopRightUiProtection() {
 
   const blockerRect = getTopRightBlockerRect();
   const nextRightOffset = blockerRect
-    ? Math.max(ROOT_RIGHT_OFFSET, Math.ceil(window.innerWidth - blockerRect.left + TOP_RIGHT_BLOCKER_SAFE_GAP))
+    ? Math.max(ROOT_RIGHT_OFFSET, Math.ceil(window.innerWidth - blockerRect.left + TOP_RIGHT_BLOCKER_SAFE_GAP + SCROLLBAR_RIGHT_OVERHANG))
     : ROOT_RIGHT_OFFSET;
   state.root.style.setProperty("--cgptbm-root-right", nextRightOffset + "px");
 }
@@ -1659,7 +1972,7 @@ function getTopRightBlockerRect() {
       rect.width < TOP_RIGHT_BLOCKER_MIN_WIDTH ||
       rect.height < TOP_RIGHT_BLOCKER_MIN_HEIGHT ||
       rect.top > TOP_RIGHT_BLOCKER_MAX_TOP ||
-      rect.right < window.innerWidth - 24 ||
+      rect.right < window.innerWidth - 64 ||
       rect.bottom <= 0
     ) {
       return;
@@ -1693,7 +2006,7 @@ export function getRailViewportTop() {
 }
 
 export function getBookmarkTabTopLimit() {
-  return Math.max(0, Math.ceil(getRailViewportTop() + RAIL_VIEWPORT_BOOKMARK_INSET));
+  return 2;
 }
 
 // ============================================================
@@ -2351,6 +2664,8 @@ export function syncRenderedBookmarkTabContent(tab, bookmark) {
   }
   if (label) {
     label.textContent = labelText;
+    var nq = getNormalizedBookmarkSearchQuery(state.bookmarkSearchQuery);
+    if (nq) highlightMatchInElement(label, nq);
   }
 
   syncTabPopupElement(tab, {
@@ -3047,6 +3362,7 @@ async function commitBookmarkDragSession(session) {
     return;
   }
 
+  pushUndoBookmarkHistory(buildStateChangeEntry("drag-reorder"));
   state.manualOrderBookmarkIds = normalizeManualOrderBookmarkIds(state.currentBookmarks, nextOrderedBookmarkIds);
   syncRenderedBookmarkTabDomOrder(getFilteredCurrentBookmarks());
   syncRenderedBookmarkRail({ lightweight: true });
@@ -3197,13 +3513,18 @@ export function getExpandedBookmarkId() {
   return state.colorPickerLockedBookmarkId || state.editLockedBookmarkId || state.resizeLockedExpandedBookmarkId || state.createPopupPreservedExpandedBookmarkId || state.focusedBookmarkId || state.hoveredBookmarkId || "";
 }
 
+function isBookmarkSearchMatched(bookmarkId) {
+  return _searchMatchedIds.has(bookmarkId);
+}
+
 export function isBookmarkExpanded(bookmarkId) {
   return Boolean(
     bookmarkId &&
     (
       bookmarkId === state.expandedBookmarkId ||
       isBookmarkPopupPinned(bookmarkId) ||
-      isBookmarkExpansionPinned(bookmarkId)
+      isBookmarkExpansionPinned(bookmarkId) ||
+      isBookmarkSearchMatched(bookmarkId)
     )
   );
 }
@@ -3707,10 +4028,11 @@ export function syncPopupOverflowIndicator(popup) {
   popup.classList.toggle("is-content-expanded", isExpanded);
 
   if (popupMoreButton) {
-    popupMoreButton.hidden = !hasOverflow;
-    popupMoreButton.textContent = "more...";
-    popupMoreButton.title = "Expand note";
-    popupMoreButton.setAttribute("aria-label", "Expand note");
+    const isResized = !isExpanded && isLargerThanMinimum;
+    popupMoreButton.hidden = !hasOverflow && !isResized;
+    popupMoreButton.textContent = "max";
+    popupMoreButton.title = "Maximize note";
+    popupMoreButton.setAttribute("aria-label", "Maximize note");
   }
   if (popupMinButton) {
     popupMinButton.hidden = !showMin;
@@ -3731,7 +4053,7 @@ export async function handlePopupContentExpand(bookmarkId, popup, event) {
   }
 
   const expandedWidth = getPopupContentMaxWidth(popup);
-  const expandedHeight = getClampedPopupHeight(getPopupContentMaxHeight(popup, expandedWidth), popup, expandedWidth);
+  const expandedHeight = getViewportClampedPopupHeight(getPopupContentMaxHeight(popup, expandedWidth));
   setPopupContentExpanded(bookmarkId, true);
   setPopupLayout(bookmarkId, expandedWidth, expandedHeight, {
     popup: popup
@@ -3818,6 +4140,8 @@ export function createTabElement(options) {
   const label = document.createElement("span");
   label.className = "cgptbm-tab__label";
   label.textContent = options.label;
+  var nq = getNormalizedBookmarkSearchQuery(state.bookmarkSearchQuery);
+  if (nq) highlightMatchInElement(label, nq);
 
   content.appendChild(label);
 
@@ -3848,8 +4172,16 @@ export function createTabElement(options) {
     });
     actionButton.addEventListener("click", function (event) {
       event.stopPropagation();
+      if (action.className === "cgptbm-tab__action--expand-pin" || action.className === "cgptbm-tab__action--pin") {
+        actionButton.dataset.preClick = actionButton.classList.contains("is-selected") ? "pinned" : "unpinned";
+      }
       action.onClick(event);
     });
+    if (action.className === "cgptbm-tab__action--expand-pin" || action.className === "cgptbm-tab__action--pin") {
+      actionButton.addEventListener("mouseleave", function () {
+        delete actionButton.dataset.preClick;
+      });
+    }
     return actionButton;
   }
 
@@ -3937,32 +4269,32 @@ export function buildTabActionIcon(icon) {
   });
 
   if (iconType === "expand-pin") {
+    // 기울어진 핀 아이콘 (몸체 + 바늘, 48→16 스케일)
     svg.appendChild(createSvgElement("path", {
-      d: "M8 1.6C10.08 1.6 11.45 2.7 11.45 4.04C11.45 4.67 11.15 5.24 10.6 5.64L10.32 7.72L11.95 8.98C12.26 9.22 12.09 9.72 11.7 9.72H8.82V13.08C8.82 13.44 8.46 13.72 8 13.72C7.54 13.72 7.18 13.44 7.18 13.08V9.72H4.3C3.91 9.72 3.74 9.22 4.05 8.98L5.68 7.72L5.4 5.64C4.85 5.24 4.55 4.67 4.55 4.04C4.55 2.7 5.92 1.6 8 1.6Z",
-      fill: "currentColor"
+      d: "M10.33 1L10.83 1L15 5.17Q15.27 5.93 14.5 5.67Q14.07 6.43 12.5 6L12 6.5L10.67 8.5Q11.3 11.63 9.83 12.67L3.33 6.5L3.83 5.67Q5 4.83 7.5 5.33L10 3.5Q9.8 1.7 10.33 1Z",
+      fill: "currentColor",
+      class: "cgptbm-tab__pin-body"
     }));
-    svg.appendChild(createSvgElement("ellipse", {
-      cx: "8",
-      cy: "4.02",
-      rx: "2.25",
-      ry: "1.14",
-      fill: "rgba(255,255,255,0.28)"
+    svg.appendChild(createSvgElement("path", {
+      d: "M5.17 10L6 10.5L2.17 14.67Q0.93 15.1 1.33 13.83L5.17 10Z",
+      fill: "currentColor",
+      class: "cgptbm-tab__pin-needle"
     }));
     return svg;
   }
 
   if (iconType === "edit") {
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
     svg.appendChild(createSvgElement("path", {
-      d: "M11.62 2.18C12.11 1.69 12.9 1.69 13.39 2.18L13.82 2.61C14.31 3.1 14.31 3.89 13.82 4.38L7.02 11.18L4.23 11.77L4.82 8.98L11.62 2.18Z",
-      fill: "currentColor"
+      d: "M 17.5 2.5 L 21.5 6.5 L 8.5 19.5 L 3 21 L 4.5 15.5 Z"
     }));
-    svg.appendChild(createSvgElement("path", {
-      d: "M10.85 2.95L13.05 5.15L12.36 5.84L10.16 3.64L10.85 2.95Z",
-      fill: "rgba(255,255,255,0.34)"
-    }));
-    svg.appendChild(createSvgElement("path", {
-      d: "M4.23 11.77L5.76 11.44L4.56 10.24L4.23 11.77Z",
-      fill: "#f8fafc"
+    svg.appendChild(createSvgElement("line", {
+      x1: "15", y1: "5", x2: "19", y2: "9"
     }));
     return svg;
   }
@@ -4022,6 +4354,8 @@ export function createTabPopupElement(options) {
   const popupBody = document.createElement("div");
   popupBody.className = "cgptbm-tab__popup-body";
   popupBody.textContent = options.popupText;
+  var nqPopup = getNormalizedBookmarkSearchQuery(state.bookmarkSearchQuery);
+  if (nqPopup) highlightMatchInElement(popupBody, nqPopup);
   popupBody.addEventListener("scroll", function () {
     syncPopupOverflowIndicator(popup);
   }, { passive: true });
@@ -4065,6 +4399,16 @@ export function syncTabPopupElement(tab, options) {
 
   if (!existingPopup) {
     tab.appendChild(popup);
+    const newBookmarkId = options.popupBookmarkId || "";
+    if (newBookmarkId) {
+      if (!getPopupLayout(newBookmarkId)) {
+        const maxW = getPopupContentMaxWidth(popup);
+        const maxH = getViewportClampedPopupHeight(getPopupContentMaxHeight(popup, maxW));
+        setPopupLayout(newBookmarkId, maxW, maxH, { popup: popup });
+        setPopupContentExpanded(newBookmarkId, true);
+      }
+      applyPopupLayoutToElement(popup, newBookmarkId);
+    }
     return;
   }
 
@@ -4078,6 +4422,8 @@ export function syncTabPopupElement(tab, options) {
   }
   if (popupBody) {
     popupBody.textContent = options.popupText;
+    var nqPopup = getNormalizedBookmarkSearchQuery(state.bookmarkSearchQuery);
+    if (nqPopup) highlightMatchInElement(popupBody, nqPopup);
   }
   delete popup.__cgptbmContentMaxWidth;
   applyPopupLayoutToElement(popup, options.popupBookmarkId || "");
