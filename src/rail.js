@@ -442,13 +442,13 @@ async function handleBookmarkClick(bookmarkId) {
 // ---- Inline label edit ----
 
 var _inlineEditCommitting = false;
+var _inlineEditBookmarkId = "";
 
 function enterInlineEdit(tab, bookmarkId, currentLabel) {
-  if (state.editLockedBookmarkId) {
+  if (_inlineEditBookmarkId) {
     commitInlineEdit();
   }
-  state.editLockedBookmarkId = bookmarkId;
-  syncExpandedBookmarkState();
+  _inlineEditBookmarkId = bookmarkId;
 
   const main = tab.querySelector(".cgptbm-tab__main");
   const label = tab.querySelector(".cgptbm-tab__label");
@@ -509,9 +509,8 @@ function commitInlineEdit() {
       updateBookmarkLabel(bookmarkId, newLabel, bookmark.colorIndex);
     }
   }
-  state.editLockedBookmarkId = "";
+  _inlineEditBookmarkId = "";
   _inlineEditCommitting = false;
-  syncExpandedBookmarkState();
 }
 
 function cancelInlineEdit() {
@@ -520,9 +519,8 @@ function cancelInlineEdit() {
   if (input) {
     cleanupInlineEdit(input);
   }
-  state.editLockedBookmarkId = "";
+  _inlineEditBookmarkId = "";
   _inlineEditCommitting = false;
-  syncExpandedBookmarkState();
 }
 
 function cleanupInlineEdit(input) {
@@ -543,7 +541,7 @@ function handleBookmarkEdit(bookmarkId, event) {
   }
 
   // Toggle: if already editing this bookmark, commit and exit
-  if (state.editLockedBookmarkId === bookmarkId) {
+  if (_inlineEditBookmarkId === bookmarkId) {
     commitInlineEdit();
     return;
   }
@@ -1413,7 +1411,7 @@ function syncBookmarkSearchControls() {
     searchInput.disabled = !state.railEnabled || (!hasBookmarks && !hasQuery);
     searchInput.placeholder = hasBookmarks || hasQuery
       ? (state.currentBookmarks.length === 1 ? "Search Tab" : "Search Tabs")
-      : "No bookmarks yet";
+      : "Drag to select text";
   }
 
   if (clearButton) {
@@ -2142,7 +2140,7 @@ export function renderBookmarks() {
   if (!state.currentBookmarks.length) {
     resetExpandedBookmarkState();
     const emptyTab = createTabElement({
-      label: "No bookmarks yet",
+      label: "Drag to select text",
       edgeText: "\u2022",
       accent: "#94a3b8",
       title: "Add a bookmark from your current selection or visible message."
@@ -2258,6 +2256,7 @@ export function createRenderedBookmarkTab(bookmark, index) {
         onClick: function (event) {
           event.preventDefault();
           event.stopPropagation();
+          if (_inlineEditBookmarkId) cancelInlineEdit();
           handleBookmarkRemove(bookmark.id);
         }
       }
@@ -2282,10 +2281,12 @@ export function createRenderedBookmarkTab(bookmark, index) {
       event.stopPropagation();
       return;
     }
+    if (_inlineEditBookmarkId) cancelInlineEdit();
     handleBookmarkClick(bookmark.id);
   });
   button.addEventListener("contextmenu", function (event) {
     event.preventDefault();
+    if (_inlineEditBookmarkId) cancelInlineEdit();
     handleBookmarkRemove(bookmark.id);
   });
   if (surface) {
@@ -2763,7 +2764,7 @@ export function syncRenderedBookmarkTabContent(tab, bookmark) {
     button.title = labelText;
     button.setAttribute("aria-label", labelText);
   }
-  if (label && bookmark.id !== state.editLockedBookmarkId) {
+  if (label && bookmark.id !== _inlineEditBookmarkId) {
     label.textContent = labelText;
     var nq = getNormalizedBookmarkSearchQuery(state.bookmarkSearchQuery);
     if (nq) highlightMatchInElement(label, nq);
@@ -3073,7 +3074,7 @@ function canReorderBookmarkTabs() {
     !state.bookmarkSearchQuery &&
     !state.popup &&
     !state.colorPicker &&
-    !state.editLockedBookmarkId &&
+    !_inlineEditBookmarkId &&
     !state.popupResizeSession &&
     Array.isArray(state.currentBookmarks) &&
     state.currentBookmarks.length > 1
