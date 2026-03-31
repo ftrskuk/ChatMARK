@@ -1,14 +1,14 @@
-# Privacy Policy — ChatMARKup
+# Privacy Policy — ChatMARK
 
 **Last updated: March 31, 2026**
 
 ## Summary
 
-ChatMARKup does not collect, transmit, or share any personal data. All data is stored locally on your device.
+ChatMARK does not collect, transmit, or share any personal data. All data is stored locally on your device.
 
 ## Data Collection
 
-ChatMARKup does **not** collect:
+ChatMARK does **not** collect:
 - Personal information (name, email, account data)
 - Browsing history
 - Analytics or usage data
@@ -16,7 +16,7 @@ ChatMARKup does **not** collect:
 
 ## Data Storage
 
-ChatMARKup stores the following data **locally on your device only**, using Chrome's `chrome.storage.local` API:
+ChatMARK stores the following data **locally on your device only**, using Chrome's `chrome.storage.local` API:
 
 - Bookmark labels and text snippets you create
 - Bookmark position data (scroll position, anchor references)
@@ -26,15 +26,15 @@ This data **never leaves your device**. It is not transmitted to any server, thi
 
 ## Data Sharing
 
-ChatMARKup does **not** share any data with third parties.
+ChatMARK does **not** share any data with third parties.
 
 ## Permissions
 
-ChatMARKup requests only the `storage` permission, which is used to save your bookmarks locally.
+ChatMARK requests only the `storage` permission, which is used to save your bookmarks locally.
 
 ## Third-Party Services
 
-ChatMARKup does not use any third-party services, analytics, or tracking tools.
+ChatMARK does not use any third-party services, analytics, or tracking tools.
 
 ## Changes to This Policy
 
