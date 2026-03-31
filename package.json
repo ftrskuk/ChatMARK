@@ -1,8 +1,8 @@
 {
-  "name": "chatmarkup-extension",
+  "name": "chatmark-extension",
   "version": "1.0.0",
   "private": true,
-  "description": "ChatMARKup - Bookmark tabs for AI chat conversations",
+  "description": "ChatMARK - Bookmark tabs for AI chat conversations",
   "scripts": {
     "build": "esbuild src/content.js --bundle --outfile=dist/content.js --format=iife --target=chrome110",
     "build:css": "cp src/content.css dist/content.css",

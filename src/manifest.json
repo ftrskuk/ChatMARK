@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "ChatMARKup Beta - Current Page Search",
+  "name": "ChatMARK",
   "version": "1.0.0",
-  "description": "Save lightweight bookmark tabs for ChatGPT, Claude, Gemini, and Codex web conversations, with current-page bookmark search.",
+  "description": "Save lightweight bookmark tabs for ChatGPT web conversations, with current-page bookmark search.",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
@@ -13,7 +13,7 @@
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png"
     },
-    "default_title": "ChatMARKup"
+    "default_title": "ChatMARK"
   },
   "permissions": [
     "storage"

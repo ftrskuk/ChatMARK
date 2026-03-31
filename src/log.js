@@ -12,7 +12,7 @@ import { ALLOWED_FRAME_ORIGINS } from './constants.js';
 export function logWarn(label, error) {
   if (window.console && typeof window.console.warn === "function") {
     try {
-      window.console.warn("[ChatMARKup]", label, error && error.message ? error.message : "");
+      window.console.warn("[ChatMARK]", label, error && error.message ? error.message : "");
     } catch (ignore) {}
   }
 }

@@ -101,7 +101,7 @@ export function debugFrameRelay(label, details) {
   }
 
   try {
-    window.console.log("[ChatMARKup][frame-relay]", label, Object.assign({
+    window.console.log("[ChatMARK][frame-relay]", label, Object.assign({
       host: window.location.hostname || "",
       isTopFrame: window.self === window.top
     }, details || {}));
