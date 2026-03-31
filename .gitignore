@@ -9,3 +9,8 @@ dist/
 # === Internal reference ===
 ref/
 *.bak
+
+# === Security preventive ===
+.env
+*.pem
+*.key
