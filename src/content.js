@@ -59,7 +59,8 @@ import {
   normalizeBookmarkUiStateEntry,
   normalizeBookmarkUiStateMap,
   hasMeaningfulBookmarkUiStateEntry,
-  setUiStateCallbacks
+  setUiStateCallbacks,
+  invalidateAllBulkBackups
 } from './ui-state.js';
 
 import {
@@ -100,6 +101,7 @@ import {
   handlePopupResizePointerMove,
   handlePopupResizePointerEnd,
   endPopupResizeSession,
+  preCollapseGuard,
   resetExpandedBookmarkState,
   syncRailOverlayScroll,
   handleRailViewportWheel,
@@ -138,6 +140,7 @@ import {
 import {
   pushUndoBookmarkHistory,
   buildBookmarkHistoryEntry,
+  buildStateChangeEntry,
   setHistoryCallbacks
 } from './history.js';
 
@@ -223,6 +226,7 @@ setBookmarkCallbacks({
   // UI 콜백 (history.js)
   pushUndoBookmarkHistory: pushUndoBookmarkHistory,
   buildBookmarkHistoryEntry: buildBookmarkHistoryEntry,
+  buildStateChangeEntry: buildStateChangeEntry,
   // ui-state 콜백 (ui-state.js)
   applyCurrentBookmarkUiState: applyCurrentBookmarkUiState,
   deletePopupLayout: deletePopupLayout,
@@ -255,7 +259,12 @@ setMigrationCallbacks({
 setUiStateCallbacks({
   releaseResizeLockedExpandedBookmarkForInteraction: releaseResizeLockedExpandedBookmarkForInteraction,
   syncExpandedBookmarkState: syncExpandedBookmarkState,
-  normalizePopupLayout: normalizePopupLayout
+  syncHistoryControls: syncBookmarkHistoryControlsToCurrentRail,
+  pushStateChangeEntry: function (action) {
+    pushUndoBookmarkHistory(buildStateChangeEntry(action));
+  },
+  normalizePopupLayout: normalizePopupLayout,
+  preCollapseGuard: preCollapseGuard
 });
 
 // popup.js ← rail + selection 콜백 (10개)
@@ -643,6 +652,7 @@ setHistoryCallbacks({
     state.lastHref = window.location.href;
     state.currentUrlKey = getCurrentUrlKey();
     state.bookmarkSearchQuery = "";
+    invalidateAllBulkBackups();
     clearActiveState();
     clearHighlightState();
     state.hoveredSandboxCardKey = "";

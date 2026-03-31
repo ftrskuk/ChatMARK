@@ -842,7 +842,19 @@ export function refreshCurrentBookmarksViewAfterIncrementalCreate(bookmarkId) {
     return false;
   }
 
+  // If tab-extend is toggled ON (all tabs pinned), auto-pin the new tab
+  const shouldAutoPin = isAllPinned();
+
   applyCurrentBookmarks();
+
+  if (shouldAutoPin) {
+    const expanded = Array.isArray(state.expandedPinnedBookmarkIds) ? state.expandedPinnedBookmarkIds : [];
+    if (expanded.indexOf(bookmarkId) < 0) {
+      expanded.push(bookmarkId);
+      state.expandedPinnedBookmarkIds = expanded;
+    }
+  }
+
   const visibleBookmarks = getFilteredCurrentBookmarks();
   const bookmarkIndex = visibleBookmarks.findIndex(function (bookmark) {
     return bookmark && bookmark.id === bookmarkId;
@@ -888,6 +900,9 @@ export function refreshCurrentBookmarksViewAfterIncrementalCreate(bookmarkId) {
     syncRailViewportOverflow();
     syncRailViewportWidth();
     scheduleSandboxCardTriggerRender();
+    if (shouldAutoPin) {
+      persistBookmarkUiState();
+    }
     shouldSkipCreateInteractionReconcile = true;
     return true;
   } finally {
@@ -2558,7 +2573,7 @@ function measureRenderedTabLayout(tab, options) {
   const popup = tab.querySelector(".cgptbm-tab__popup");
   const popupHeight = popup ? Math.max(0, Math.ceil(popup.offsetHeight)) : 0;
   if (nextOptions.lightweight) {
-    const surfaceHeight = isExpanded ? EXPANDED_TAB_SURFACE_HEIGHT : COLLAPSED_TAB_HEIGHT;
+    const surfaceHeight = COLLAPSED_TAB_HEIGHT; // Unified height — expansion no longer changes surface height
     return {
       surfaceHeight: surfaceHeight,
       popupHeight: popupHeight,
@@ -2600,7 +2615,6 @@ function measureRenderedTabLayout(tab, options) {
   }, 0);
   const headerHeight = Math.max(
     COLLAPSED_TAB_HEIGHT,
-    isExpanded ? EXPANDED_TAB_SURFACE_HEIGHT : 0,
     buttonHeight,
     actionsHeight
   );

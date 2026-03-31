@@ -1009,7 +1009,7 @@
 }
 
 .cgptbm-tab.is-expanded .cgptbm-tab__content {
-  min-height: 48px;
+  min-height: 34px; /* Unified with collapsed tab height */
   padding-left: 8px;
 }
 

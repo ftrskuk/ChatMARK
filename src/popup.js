@@ -176,7 +176,7 @@ export function getPopupContentMaxHeight(popup, width) {
     popupBody.style.flex = "0 0 auto";
   }
 
-  const naturalHeight = Math.max(POPUP_MIN_HEIGHT, Math.ceil(popup.offsetHeight));
+  const naturalHeight = Math.max(POPUP_MIN_HEIGHT, Math.ceil(popup.getBoundingClientRect().height));
 
   popup.style.width = previousWidth;
   popup.style.height = previousHeight;

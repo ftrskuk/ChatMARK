@@ -36,6 +36,7 @@ let _releaseResizeLockedExpandedBookmarkForInteraction = null;
 let _refreshCurrentBookmarksViewAfterIncrementalRemove = null;
 let _pushUndoBookmarkHistory = null;
 let _buildBookmarkHistoryEntry = null;
+let _buildStateChangeEntry = null;
 
 // store/ui-state layer (아직 미완성 모듈)
 let _applyCurrentBookmarkUiState = null;
@@ -64,6 +65,7 @@ export function setBookmarkCallbacks(callbacks) {
   _refreshCurrentBookmarksViewAfterIncrementalRemove = callbacks.refreshCurrentBookmarksViewAfterIncrementalRemove || null;
   _pushUndoBookmarkHistory = callbacks.pushUndoBookmarkHistory || null;
   _buildBookmarkHistoryEntry = callbacks.buildBookmarkHistoryEntry || null;
+  _buildStateChangeEntry = callbacks.buildStateChangeEntry || null;
   _applyCurrentBookmarkUiState = callbacks.applyCurrentBookmarkUiState || null;
   _deletePopupLayout = callbacks.deletePopupLayout || null;
   _sanitizeBookmarkInteractionIds = callbacks.sanitizeBookmarkInteractionIds || null;
@@ -758,6 +760,9 @@ export async function saveBookmark(anchor, label, options) {
 }
 
 export async function updateBookmarkLabel(bookmarkId, label, colorIndex) {
+  if (_pushUndoBookmarkHistory && _buildStateChangeEntry) {
+    _pushUndoBookmarkHistory(_buildStateChangeEntry("edit-label"));
+  }
   const nextBookmarks = state.currentBookmarks.map(function (bookmark) {
     if (bookmark.id !== bookmarkId) {
       return bookmark;

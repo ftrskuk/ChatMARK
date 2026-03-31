@@ -22,7 +22,8 @@ import {
   persistBookmarkUiState,
   persistPopupLayouts,
   isBookmarkPopupPinned,
-  isBookmarkExpansionPinned
+  isBookmarkExpansionPinned,
+  invalidateAllBulkBackups
 } from './ui-state.js';
 import { normalizePopupLayout } from './popup.js';
 
@@ -232,6 +233,43 @@ async function restoreBookmarkHistoryEntry(entry) {
 }
 
 // ============================================================
+// 상태 스냅샷 기반 히스토리 (state-change)
+// ============================================================
+
+export function buildStateChangeEntry(action) {
+  return {
+    type: "state-change",
+    action: action || "",
+    urlKey: state.currentUrlKey,
+    pinnedBookmarkIds: Array.isArray(state.pinnedBookmarkIds) ? state.pinnedBookmarkIds.slice() : [],
+    expandedPinnedBookmarkIds: Array.isArray(state.expandedPinnedBookmarkIds) ? state.expandedPinnedBookmarkIds.slice() : [],
+    expandedPopupContentBookmarkIds: Array.isArray(state.expandedPopupContentBookmarkIds) ? state.expandedPopupContentBookmarkIds.slice() : [],
+    manualOrderBookmarkIds: Array.isArray(state.manualOrderBookmarkIds) ? state.manualOrderBookmarkIds.slice() : [],
+    bookmarks: cloneBookmarkHistoryValue(state.currentBookmarks)
+  };
+}
+
+async function restoreStateChangeEntry(entry) {
+  if (!entry || entry.urlKey !== state.currentUrlKey) {
+    return;
+  }
+  state.pinnedBookmarkIds = Array.isArray(entry.pinnedBookmarkIds) ? entry.pinnedBookmarkIds.slice() : [];
+  state.expandedPinnedBookmarkIds = Array.isArray(entry.expandedPinnedBookmarkIds) ? entry.expandedPinnedBookmarkIds.slice() : [];
+  state.expandedPopupContentBookmarkIds = Array.isArray(entry.expandedPopupContentBookmarkIds) ? entry.expandedPopupContentBookmarkIds.slice() : [];
+  state.manualOrderBookmarkIds = Array.isArray(entry.manualOrderBookmarkIds) ? entry.manualOrderBookmarkIds.slice() : [];
+  if (Array.isArray(entry.bookmarks)) {
+    state.bookmarksByUrl[entry.urlKey] = normalizeBookmarkList(entry.bookmarks, entry.urlKey);
+  }
+  try {
+    await persistBookmarks();
+  } catch (error) {
+    logWarn("restoreStateChangeEntry: persist failed", error);
+  }
+  await persistBookmarkUiState();
+  refreshCurrentBookmarksView();
+}
+
+// ============================================================
 // Undo / Redo 핸들러
 // ============================================================
 
@@ -250,6 +288,7 @@ export async function handleUndoBookmarkHistory(event) {
   }
 
   if (entry.type === "create") {
+    invalidateAllBulkBackups();
     const currentBookmark = state.currentBookmarks.find(function (bookmark) {
       return bookmark && bookmark.id === entry.bookmark.id;
     });
@@ -261,12 +300,21 @@ export async function handleUndoBookmarkHistory(event) {
   }
 
   if (entry.type === "delete") {
+    invalidateAllBulkBackups();
     const restoredBookmark = await restoreBookmarkHistoryEntry(entry);
     pushRedoBookmarkHistory(entry);
     if (_syncBookmarkHistoryControlsToCurrentRail) _syncBookmarkHistoryControlsToCurrentRail();
     if (restoredBookmark) {
       if (_pulseTab) _pulseTab(restoredBookmark.id);
     }
+    return;
+  }
+
+  if (entry.type === "state-change") {
+    const redoEntry = buildStateChangeEntry(entry.action);
+    await restoreStateChangeEntry(entry);
+    pushRedoBookmarkHistory(redoEntry);
+    if (_syncBookmarkHistoryControlsToCurrentRail) _syncBookmarkHistoryControlsToCurrentRail();
   }
 }
 
@@ -285,6 +333,7 @@ export async function handleRedoBookmarkHistory(event) {
   }
 
   if (entry.type === "create") {
+    invalidateAllBulkBackups();
     const restoredBookmark = await restoreBookmarkHistoryEntry(entry);
     pushUndoBookmarkHistory(entry, { preserveRedo: true });
     if (_syncBookmarkHistoryControlsToCurrentRail) _syncBookmarkHistoryControlsToCurrentRail();
@@ -295,11 +344,20 @@ export async function handleRedoBookmarkHistory(event) {
   }
 
   if (entry.type === "delete") {
+    invalidateAllBulkBackups();
     const currentBookmark = state.currentBookmarks.find(function (bookmark) {
       return bookmark && bookmark.id === entry.bookmark.id;
     });
     const undoEntry = currentBookmark ? buildBookmarkHistoryEntry("delete", currentBookmark) : cloneBookmarkHistoryEntry(entry);
     await handleBookmarkRemove(entry.bookmark.id, { skipHistory: true });
+    pushUndoBookmarkHistory(undoEntry, { preserveRedo: true });
+    if (_syncBookmarkHistoryControlsToCurrentRail) _syncBookmarkHistoryControlsToCurrentRail();
+    return;
+  }
+
+  if (entry.type === "state-change") {
+    const undoEntry = buildStateChangeEntry(entry.action);
+    await restoreStateChangeEntry(entry);
     pushUndoBookmarkHistory(undoEntry, { preserveRedo: true });
     if (_syncBookmarkHistoryControlsToCurrentRail) _syncBookmarkHistoryControlsToCurrentRail();
   }

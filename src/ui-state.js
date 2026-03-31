@@ -16,14 +16,188 @@ import {
 // UI layer (store → ui 방향 금지)
 let _releaseResizeLockedExpandedBookmarkForInteraction = null;
 let _syncExpandedBookmarkState = null;
+let _syncHistoryControls = null;
+let _pushStateChangeEntry = null;
 
 // popup.js (DOM 측정 체인 포함)
 let _normalizePopupLayout = null;
 
+// pre-collapse guard (rail.js 측 잠금 해제용)
+let _preCollapseGuard = null;
+
 export function setUiStateCallbacks(callbacks) {
   _releaseResizeLockedExpandedBookmarkForInteraction = callbacks.releaseResizeLockedExpandedBookmarkForInteraction || null;
   _syncExpandedBookmarkState = callbacks.syncExpandedBookmarkState || null;
+  _syncHistoryControls = callbacks.syncHistoryControls || null;
+  _pushStateChangeEntry = callbacks.pushStateChangeEntry || null;
   _normalizePopupLayout = callbacks.normalizePopupLayout || null;
+  _preCollapseGuard = callbacks.preCollapseGuard || null;
+}
+
+// ---- Collapse/Expand-all 백업 (메모리 전용, 비영속) ----
+// 상호 배타: 한쪽 백업이 존재하면 다른 쪽은 활성화 불가
+let _collapseBackup = null;
+// _expandBackup / _expandPhase 제거됨 — 독립 버튼 방식으로 전환
+
+export function invalidateAllBulkBackups() {
+  _collapseBackup = null;
+}
+
+export function hasCollapseBackup() {
+  return _collapseBackup !== null;
+}
+
+export function hasExpandBackup() {
+  return false;
+}
+
+export function hasExpandedPinnedState() {
+  return Boolean(
+    (Array.isArray(state.pinnedBookmarkIds) && state.pinnedBookmarkIds.length) ||
+    (Array.isArray(state.expandedPinnedBookmarkIds) && state.expandedPinnedBookmarkIds.length) ||
+    (Array.isArray(state.expandedPopupContentBookmarkIds) && state.expandedPopupContentBookmarkIds.length)
+  );
+}
+
+function hasCollapsedBookmarks() {
+  const currentIds = Array.isArray(state.currentBookmarks)
+    ? state.currentBookmarks.map(function (b) { return b.id; })
+    : [];
+  if (!currentIds.length) return false;
+  const pinned = Array.isArray(state.pinnedBookmarkIds) ? state.pinnedBookmarkIds : [];
+  const expanded = Array.isArray(state.expandedPinnedBookmarkIds) ? state.expandedPinnedBookmarkIds : [];
+  return currentIds.some(function (id) {
+    return pinned.indexOf(id) < 0 || expanded.indexOf(id) < 0;
+  });
+}
+
+export function canCollapseAll() {
+  return !_collapseBackup && hasExpandedPinnedState();
+}
+
+export function canExpandAll() {
+  return hasCollapsedBookmarks();
+}
+
+export async function collapseAllBookmarks() {
+  if (!hasExpandedPinnedState()) {
+    return;
+  }
+
+  if (_pushStateChangeEntry) _pushStateChangeEntry("collapse-all");
+  if (_preCollapseGuard) _preCollapseGuard();
+
+
+
+  _collapseBackup = {
+    pinnedBookmarkIds: (Array.isArray(state.pinnedBookmarkIds) ? state.pinnedBookmarkIds.slice() : []),
+    expandedPinnedBookmarkIds: (Array.isArray(state.expandedPinnedBookmarkIds) ? state.expandedPinnedBookmarkIds.slice() : []),
+    expandedPopupContentBookmarkIds: (Array.isArray(state.expandedPopupContentBookmarkIds) ? state.expandedPopupContentBookmarkIds.slice() : []),
+    urlKey: state.currentUrlKey
+  };
+
+  state.pinnedBookmarkIds = [];
+  state.expandedPinnedBookmarkIds = [];
+  state.expandedPopupContentBookmarkIds = [];
+  if (_syncExpandedBookmarkState) _syncExpandedBookmarkState({ full: true });
+  await persistBookmarkUiState();
+}
+
+export async function restoreCollapsedBookmarks() {
+  if (!_collapseBackup) {
+    return;
+  }
+
+  if (_collapseBackup.urlKey !== state.currentUrlKey) {
+    _collapseBackup = null;
+    return;
+  }
+
+  state.pinnedBookmarkIds = _collapseBackup.pinnedBookmarkIds.slice();
+  state.expandedPinnedBookmarkIds = _collapseBackup.expandedPinnedBookmarkIds.slice();
+  state.expandedPopupContentBookmarkIds = _collapseBackup.expandedPopupContentBookmarkIds.slice();
+  _collapseBackup = null;
+  if (_syncExpandedBookmarkState) _syncExpandedBookmarkState({ full: true });
+  await persistBookmarkUiState();
+}
+
+// ---- 독립 버튼: Tab Extension / Post-it Extension ----
+
+// Tab Extension: pin on/off 토글 (post-it 건드리지 않음)
+export async function expandAllBookmarks() {
+  const currentIds = Array.isArray(state.currentBookmarks)
+    ? state.currentBookmarks.map(function (b) { return b.id; })
+    : [];
+  if (!currentIds.length) {
+    return;
+  }
+
+  if (_pushStateChangeEntry) _pushStateChangeEntry("tab-extend");
+  if (_preCollapseGuard) _preCollapseGuard();
+  if (_collapseBackup) _collapseBackup = null;
+
+  if (isAllPinned()) {
+    state.expandedPinnedBookmarkIds = [];
+  } else {
+    state.expandedPinnedBookmarkIds = currentIds.slice();
+  }
+  if (_syncExpandedBookmarkState) _syncExpandedBookmarkState({ full: true });
+  await persistBookmarkUiState();
+}
+
+// 모두 pinned 여부
+export function isAllPinned() {
+  var currentIds = Array.isArray(state.currentBookmarks)
+    ? state.currentBookmarks.map(function (b) { return b.id; })
+    : [];
+  if (!currentIds.length) return false;
+  var expanded = Array.isArray(state.expandedPinnedBookmarkIds) ? state.expandedPinnedBookmarkIds : [];
+  return currentIds.every(function (id) { return expanded.indexOf(id) >= 0; });
+}
+
+// Tab Extension disabled 조건: 북마크 없을 때만
+export function canExpandAllTabs() {
+  var currentIds = Array.isArray(state.currentBookmarks)
+    ? state.currentBookmarks.map(function (b) { return b.id; })
+    : [];
+  return currentIds.length > 0;
+}
+
+// Post-it Extension: on/off 토글 (pin 건드리지 않음)
+export async function expandAllPostits() {
+  const currentIds = Array.isArray(state.currentBookmarks)
+    ? state.currentBookmarks.map(function (b) { return b.id; })
+    : [];
+  if (!currentIds.length) {
+    return;
+  }
+
+  if (_pushStateChangeEntry) _pushStateChangeEntry("postit-extend");
+  if (isAllPostits()) {
+    state.pinnedBookmarkIds = [];
+  } else {
+    state.pinnedBookmarkIds = currentIds.slice();
+  }
+  if (_syncExpandedBookmarkState) _syncExpandedBookmarkState({ full: true });
+  await persistBookmarkUiState();
+}
+
+// 모든 post-it 표시 여부
+export function isAllPostits() {
+  var currentIds = Array.isArray(state.currentBookmarks)
+    ? state.currentBookmarks.map(function (b) { return b.id; })
+    : [];
+  if (!currentIds.length) return false;
+  var pinned = Array.isArray(state.pinnedBookmarkIds) ? state.pinnedBookmarkIds : [];
+  return currentIds.every(function (id) { return pinned.indexOf(id) >= 0; });
+}
+
+// Post-it Extension disabled 조건: 북마크 없을 때만
+export function canExpandAllPostits() {
+  var currentIds = Array.isArray(state.currentBookmarks)
+    ? state.currentBookmarks.map(function (b) { return b.id; })
+    : [];
+  return currentIds.length > 0;
 }
 
 // ============================================================
@@ -242,6 +416,7 @@ function getCurrentBookmarkUiStateEntry() {
 }
 
 export function applyCurrentBookmarkUiState() {
+  invalidateAllBulkBackups();
   const entry = normalizeBookmarkUiStateEntry(state.bookmarkUiStateByUrl[state.currentUrlKey]);
   const knownBookmarkIds = buildKnownBookmarkIdMap(state.currentBookmarks);
   state.pinnedBookmarkIds = sanitizeBookmarkInteractionIds(entry.pinnedBookmarkIds, knownBookmarkIds);
@@ -282,6 +457,8 @@ export async function togglePinnedBookmark(bookmarkId) {
     return;
   }
 
+  if (_pushStateChangeEntry) _pushStateChangeEntry("toggle-pin");
+  invalidateAllBulkBackups();
   if (_releaseResizeLockedExpandedBookmarkForInteraction) _releaseResizeLockedExpandedBookmarkForInteraction(nextBookmarkId);
   const pinnedBookmarkIds = Array.isArray(state.pinnedBookmarkIds) ? state.pinnedBookmarkIds.slice() : [];
   const pinnedIndex = pinnedBookmarkIds.indexOf(nextBookmarkId);
@@ -293,6 +470,7 @@ export async function togglePinnedBookmark(bookmarkId) {
 
   state.pinnedBookmarkIds = pinnedBookmarkIds;
   if (_syncExpandedBookmarkState) _syncExpandedBookmarkState({ full: true });
+  if (_syncHistoryControls) _syncHistoryControls();
   await persistBookmarkUiState();
 }
 
@@ -302,6 +480,8 @@ export async function toggleExpandedPinnedBookmark(bookmarkId) {
     return;
   }
 
+  if (_pushStateChangeEntry) _pushStateChangeEntry("toggle-expand");
+  invalidateAllBulkBackups();
   if (_releaseResizeLockedExpandedBookmarkForInteraction) _releaseResizeLockedExpandedBookmarkForInteraction(nextBookmarkId);
   const expandedPinnedBookmarkIds = Array.isArray(state.expandedPinnedBookmarkIds)
     ? state.expandedPinnedBookmarkIds.slice()
@@ -315,6 +495,7 @@ export async function toggleExpandedPinnedBookmark(bookmarkId) {
 
   state.expandedPinnedBookmarkIds = expandedPinnedBookmarkIds;
   if (_syncExpandedBookmarkState) _syncExpandedBookmarkState({ full: true });
+  if (_syncHistoryControls) _syncHistoryControls();
   await persistBookmarkUiState();
 }
 
