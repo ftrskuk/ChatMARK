@@ -665,9 +665,6 @@ setHistoryCallbacks({
       if (state._updateBannerDismissed === APP_VERSION) {
         return;
       }
-      // 영구 스토리지 체크 (영구 dismiss 활성화 시 사용)
-      // TODO: 기존 저장값 정리 — 세션 전용 전환 후 1회 배포 뒤 제거 가능
-      await storageRemove(UPDATE_DISMISSED_STORAGE_KEY);
       var raw = await storageGet([UPDATE_DISMISSED_STORAGE_KEY]);
       var dismissed = raw[UPDATE_DISMISSED_STORAGE_KEY] || "";
       if (dismissed === APP_VERSION) {
@@ -722,9 +719,7 @@ setHistoryCallbacks({
       closeBtn.textContent = "OK";
       closeBtn.addEventListener("click", function () {
         banner.remove();
-        // 세션 메모리만 — 익스텐션 재시작 시 다시 표시됨
-        // 영구 dismiss로 전환하려면 아래 주석을 해제:
-        // storageSet({ [UPDATE_DISMISSED_STORAGE_KEY]: APP_VERSION });
+        storageSet({ [UPDATE_DISMISSED_STORAGE_KEY]: APP_VERSION });
         state._updateBannerDismissed = APP_VERSION;
       });
 
