@@ -7,88 +7,203 @@
 //
 // Extracted from content.js as the 18th and final module.
 
-import state from './state.js';
-import { normalizeText, normalizeInteger, clamp, fingerprintRawText, fingerprintText } from './text.js';
-import { storageGet, storageSet, storageRemove } from './storage.js';
-import { logWarn } from './log.js';
-import { createSvgElement, getScopeRoot, collectAnchorBlocks, getElementText, findMessageContainer } from './dom.js';
+import state from "./state.js";
 import {
-  ROOT_ID, TAB_COLORS, COLLAPSED_TAB_HEIGHT, EXPANDED_TAB_SURFACE_HEIGHT,
-  COLLAPSED_TAB_VISIBLE_EDGE_WIDTH, ROOT_RIGHT_OFFSET, RAIL_VIEWPORT_DEFAULT_TOP,
-  RAIL_VIEWPORT_WIDTH, RAIL_LAYER_LEFT_BLEED, RAIL_LAYER_RIGHT_BLEED,
-  TAB_STACK_GAP, TAB_POPUP_OFFSET,
-  POPUP_MIN_WIDTH, POPUP_MAX_WIDTH, POPUP_MIN_HEIGHT, POPUP_MAX_HEIGHT,
-  RAIL_OPACITY_STORAGE_KEY, RAIL_ENABLED_STORAGE_KEY,
-  ADD_TAB_DEFAULT_LABEL, ADD_TAB_SUCCESS_LABEL,
-  DEFAULT_RAIL_OPACITY, MIN_RAIL_OPACITY, MAX_RAIL_OPACITY,
-  HIGHLIGHT_CLASS, SELECTION_TRIGGER_LABEL,
-  MAX_BOOKMARKS_PER_PAGE
-} from './constants.js';
+  normalizeText,
+  normalizeInteger,
+  clamp,
+  fingerprintRawText,
+  fingerprintText,
+} from "./text.js";
+import { storageGet, storageSet, storageRemove } from "./storage.js";
+import { logWarn } from "./log.js";
 import {
-  normalizeUrlKey, normalizeBookmarkList, normalizeColorIndex,
-  normalizeBookmarkShardIndexMap, getBookmarkShardUrlHash,
-  getBookmarkShardBucketStorageKey, getBookmarkUiStateShardStorageKey,
-  getPopupLayoutShardStorageKey, buildBookmarkShardIndexEntry,
-  persistBookmarks, refreshCurrentBookmarksView, applyCurrentBookmarks,
-  updateBookmarkLabel, handleBookmarkRemove, saveBookmark,
-  getCurrentUrlKey, loadBookmarks
-} from './bookmarks.js';
+  getScopeRoot,
+  collectAnchorBlocks,
+  getElementText,
+  findMessageContainer,
+} from "./dom.js";
 import {
-  buildKnownBookmarkIdMap, sanitizeBookmarkInteractionId,
-  sanitizeBookmarkInteractionIds, normalizeManualOrderBookmarkIds,
-  normalizeBookmarkUiStateEntry, normalizeBookmarkUiStateMap,
-  hasMeaningfulBookmarkUiStateEntry, buildSingleBookmarkUiStateObject,
-  applyCurrentBookmarkUiState, persistBookmarkUiState,
-  togglePinnedBookmark, toggleExpandedPinnedBookmark,
-  isBookmarkPopupPinned, isBookmarkExpansionPinned,
-  deletePopupLayout, normalizePopupLayoutMap, persistPopupLayouts,
-  collapseAllBookmarks, restoreCollapsedBookmarks,
-  hasCollapseBackup, canCollapseAll, hasExpandedPinnedState,
-  expandAllBookmarks, canExpandAllTabs, isAllPinned,
-  expandAllPostits, canExpandAllPostits, isAllPostits,
-  hasExpandBackup, canExpandAll,
-  invalidateAllBulkBackups
-} from './ui-state.js';
+  areBookmarkIdListsEqual,
+  computeTabPositions as computeTabPositionsBase,
+  getBookmarkIdList,
+  getDisplayOrderedBookmarks,
+} from "./rail/ordering.js";
 import {
-  normalizePopupLayout, getPopupViewportMaxWidth, getPopupContentMaxWidth,
-  getClampedPopupWidth, getViewportClampedPopupHeight, getPopupContentMaxHeight,
-  getClampedPopupHeight, openSavePopup, closeSavePopup,
-  closeBookmarkColorPicker, handleBookmarkColorPickerOpen,
-  getDefaultPopupLabel, isBookmarkColorPickerEnabled
-} from './popup.js';
+  buildTabActionIcon,
+  createBookmarkHistoryIcon,
+  createButtonSvgIcon,
+  renderTabActionButtonContent,
+} from "./rail/icons.js";
 import {
-  hideSelectionTrigger, scheduleSelectionUiUpdate, startBookmarkFlow,
-  handleSelectionTriggerClick, getSelectionElement, isEditableTextSelectionTarget
-} from './selection.js';
+  bookmarkMatchesSearchQuery,
+  getBookmarkSearchStatusText,
+  getBookmarkSearchStatusTitle,
+  getFilteredBookmarks,
+  getNormalizedBookmarkSearchQuery,
+  highlightMatchInElement,
+} from "./rail/search-utils.js";
 import {
-  isFrameRelayAnchor, requestFrameBookmarkReveal, syncFrameRelayDebugState
-} from './bridge.js';
+  ROOT_ID,
+  TAB_COLORS,
+  COLLAPSED_TAB_HEIGHT,
+  EXPANDED_TAB_SURFACE_HEIGHT,
+  COLLAPSED_TAB_VISIBLE_EDGE_WIDTH,
+  ROOT_RIGHT_OFFSET,
+  RAIL_VIEWPORT_DEFAULT_TOP,
+  RAIL_VIEWPORT_WIDTH,
+  RAIL_LAYER_LEFT_BLEED,
+  RAIL_LAYER_RIGHT_BLEED,
+  TAB_STACK_GAP,
+  TAB_POPUP_OFFSET,
+  POPUP_MIN_WIDTH,
+  POPUP_MAX_WIDTH,
+  POPUP_MIN_HEIGHT,
+  POPUP_MAX_HEIGHT,
+  RAIL_OPACITY_STORAGE_KEY,
+  RAIL_ENABLED_STORAGE_KEY,
+  ADD_TAB_DEFAULT_LABEL,
+  ADD_TAB_SUCCESS_LABEL,
+  DEFAULT_RAIL_OPACITY,
+  MIN_RAIL_OPACITY,
+  MAX_RAIL_OPACITY,
+  HIGHLIGHT_CLASS,
+  SELECTION_TRIGGER_LABEL,
+  MAX_BOOKMARKS_PER_PAGE,
+} from "./constants.js";
 import {
-  isClaudeSandboxCardContext, isSandboxCardAnchor,
+  normalizeUrlKey,
+  normalizeBookmarkList,
+  normalizeColorIndex,
+  normalizeBookmarkShardIndexMap,
+  getBookmarkShardUrlHash,
+  getBookmarkShardBucketStorageKey,
+  getBookmarkUiStateShardStorageKey,
+  getPopupLayoutShardStorageKey,
+  buildBookmarkShardIndexEntry,
+  persistBookmarks,
+  refreshCurrentBookmarksView,
+  applyCurrentBookmarks,
+  updateBookmarkLabel,
+  handleBookmarkRemove,
+  saveBookmark,
+  getCurrentUrlKey,
+  loadBookmarks,
+} from "./bookmarks.js";
+import {
+  buildKnownBookmarkIdMap,
+  sanitizeBookmarkInteractionId,
+  sanitizeBookmarkInteractionIds,
+  normalizeManualOrderBookmarkIds,
+  normalizeBookmarkUiStateEntry,
+  normalizeBookmarkUiStateMap,
+  hasMeaningfulBookmarkUiStateEntry,
+  buildSingleBookmarkUiStateObject,
+  applyCurrentBookmarkUiState,
+  persistBookmarkUiState,
+  togglePinnedBookmark,
+  toggleExpandedPinnedBookmark,
+  isBookmarkPopupPinned,
+  isBookmarkExpansionPinned,
+  deletePopupLayout,
+  normalizePopupLayoutMap,
+  persistPopupLayouts,
+  collapseAllBookmarks,
+  restoreCollapsedBookmarks,
+  hasCollapseBackup,
+  canCollapseAll,
+  hasExpandedPinnedState,
+  expandAllBookmarks,
+  canExpandAllTabs,
+  isAllPinned,
+  expandAllPostits,
+  canExpandAllPostits,
+  isAllPostits,
+  hasExpandBackup,
+  canExpandAll,
+  invalidateAllBulkBackups,
+} from "./ui-state.js";
+import {
+  normalizePopupLayout,
+  getPopupViewportMaxWidth,
+  getPopupContentMaxWidth,
+  getClampedPopupWidth,
+  getViewportClampedPopupHeight,
+  getPopupContentMaxHeight,
+  getClampedPopupHeight,
+  openSavePopup,
+  closeSavePopup,
+  closeBookmarkColorPicker,
+  handleBookmarkColorPickerOpen,
+  getDefaultPopupLabel,
+  isBookmarkColorPickerEnabled,
+} from "./popup.js";
+import {
+  hideSelectionTrigger,
+  scheduleSelectionUiUpdate,
+  startBookmarkFlow,
+  handleSelectionTriggerClick,
+  getSelectionElement,
+  isEditableTextSelectionTarget,
+} from "./selection.js";
+import {
+  isFrameRelayAnchor,
+  requestFrameBookmarkReveal,
+  syncFrameRelayDebugState,
+} from "./bridge.js";
+import {
+  isClaudeSandboxCardContext,
+  isSandboxCardAnchor,
   rememberClaudeSandboxCardCandidateFromElement,
-  collectClaudeSandboxCardCandidates, getClaudeSandboxCardCandidateAtPoint,
-  scheduleSandboxCardTriggerRender, renderSandboxCardTriggers,
-  isRenderableSandboxCardCandidate, computeSandboxCardTriggerPosition,
-  buildClaudeSandboxCardAnchor, captureClaudeSandboxCardAnchor,
-  showSandboxCardHighlight, hideSandboxCardHighlight,
-  updateSandboxCardHighlightRect, getSandboxCardHighlightElement
-} from './sandbox-card.js';
-import { resolveBookmarkTarget, buildTargetTextMap, scoreOccurrenceEdge, matchesSelectionContextFingerprint } from './resolve.js';
+  collectClaudeSandboxCardCandidates,
+  getClaudeSandboxCardCandidateAtPoint,
+  scheduleSandboxCardTriggerRender,
+  renderSandboxCardTriggers,
+  isRenderableSandboxCardCandidate,
+  computeSandboxCardTriggerPosition,
+  buildClaudeSandboxCardAnchor,
+  captureClaudeSandboxCardAnchor,
+  showSandboxCardHighlight,
+  hideSandboxCardHighlight,
+  updateSandboxCardHighlightRect,
+  getSandboxCardHighlightElement,
+} from "./sandbox-card.js";
 import {
-  scheduleTargetHighlight, clearHighlightState,
-  highlightInlineText, scrollResolvedMatchIntoView,
-  isTargetComfortablyVisible, resolvePreferredHighlightMatch
-} from './highlight.js';
+  resolveBookmarkTarget,
+  buildTargetTextMap,
+  scoreOccurrenceEdge,
+  matchesSelectionContextFingerprint,
+} from "./resolve.js";
 import {
-  beginHiddenScrollTransaction, finishHiddenScrollTransaction, forceHideScrollTransaction,
-  advanceScrollProgress, getOutputScrollBehavior, waitForNextPaint
-} from './scroll.js';
+  scheduleTargetHighlight,
+  clearHighlightState,
+  highlightInlineText,
+  scrollResolvedMatchIntoView,
+  isTargetComfortablyVisible,
+  resolvePreferredHighlightMatch,
+} from "./highlight.js";
 import {
-  pushUndoBookmarkHistory, buildBookmarkHistoryEntry, buildStateChangeEntry,
-  canUndoBookmarkHistory, canRedoBookmarkHistory,
-  handleUndoBookmarkHistory, handleRedoBookmarkHistory
-} from './history.js';
-import { formatPopupDisplayText, isCodeAnchor, extractStructuredPopupTextFromRange } from './capture.js';
+  beginHiddenScrollTransaction,
+  finishHiddenScrollTransaction,
+  forceHideScrollTransaction,
+  advanceScrollProgress,
+  getOutputScrollBehavior,
+  waitForNextPaint,
+} from "./scroll.js";
+import {
+  pushUndoBookmarkHistory,
+  buildBookmarkHistoryEntry,
+  buildStateChangeEntry,
+  canUndoBookmarkHistory,
+  canRedoBookmarkHistory,
+  handleUndoBookmarkHistory,
+  handleRedoBookmarkHistory,
+} from "./history.js";
+import {
+  formatPopupDisplayText,
+  isCodeAnchor,
+  extractStructuredPopupTextFromRange,
+} from "./capture.js";
 
 // ============================================================
 // Local constants (rail-specific, not shared via constants.js)
@@ -119,7 +234,7 @@ const TOP_RIGHT_BLOCKER_SELECTOR = [
   "[aria-modal='true']",
   "[data-radix-popper-content-wrapper]",
   "[data-radix-dropdown-menu-content]",
-  "[data-radix-popover-content]"
+  "[data-radix-popover-content]",
 ].join(", ");
 const TAB_POPUP_CLEARANCE = 16;
 const HISTORY_CONTROLS_DEFAULT_TOP = 60;
@@ -143,63 +258,6 @@ function normalizeRailOpacity(value) {
   return clamp(numeric, MIN_RAIL_OPACITY, MAX_RAIL_OPACITY);
 }
 
-function getDisplayOrderedBookmarks(bookmarks, manualOrderBookmarkIds) {
-  const source = Array.isArray(bookmarks) ? bookmarks.slice() : [];
-  if (!source.length || !Array.isArray(manualOrderBookmarkIds) || !manualOrderBookmarkIds.length) {
-    return source;
-  }
-
-  const bookmarkById = {};
-  source.forEach(function (bookmark) {
-    if (bookmark && bookmark.id) {
-      bookmarkById[bookmark.id] = bookmark;
-    }
-  });
-
-  const ordered = [];
-  const usedBookmarkIds = {};
-  manualOrderBookmarkIds.forEach(function (bookmarkId) {
-    if (!bookmarkId || usedBookmarkIds[bookmarkId] || !bookmarkById[bookmarkId]) {
-      return;
-    }
-
-    usedBookmarkIds[bookmarkId] = true;
-    ordered.push(bookmarkById[bookmarkId]);
-  });
-
-  source.forEach(function (bookmark) {
-    if (!bookmark || !bookmark.id || usedBookmarkIds[bookmark.id]) {
-      return;
-    }
-
-    ordered.push(bookmark);
-  });
-
-  return ordered;
-}
-
-function getBookmarkIdList(bookmarks) {
-  return (Array.isArray(bookmarks) ? bookmarks : [])
-    .map(function (bookmark) {
-      return bookmark && bookmark.id ? bookmark.id : "";
-    })
-    .filter(Boolean);
-}
-
-function areBookmarkIdListsEqual(left, right) {
-  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
-    return false;
-  }
-
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index] !== right[index]) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 function shouldPreferBlockHighlight(bookmark) {
   const anchor = bookmark && bookmark.anchor ? bookmark.anchor : null;
   if (isSandboxCardAnchor(anchor)) {
@@ -209,7 +267,10 @@ function shouldPreferBlockHighlight(bookmark) {
     return false;
   }
 
-  const structuredDisplayText = formatPopupDisplayText(anchor.selectionDisplayText || "", false);
+  const structuredDisplayText = formatPopupDisplayText(
+    anchor.selectionDisplayText || "",
+    false,
+  );
   if (!structuredDisplayText || structuredDisplayText.indexOf("\n") === -1) {
     return false;
   }
@@ -220,7 +281,10 @@ function shouldPreferBlockHighlight(bookmark) {
     return false;
   }
 
-  return !normalizedSelectionText || normalizedDisplayText === normalizedSelectionText;
+  return (
+    !normalizedSelectionText ||
+    normalizedDisplayText === normalizedSelectionText
+  );
 }
 
 // ============================================================
@@ -248,15 +312,26 @@ function estimateResolveConfidence(target, bookmark) {
   const anchor = bookmark.anchor;
   let score = 0;
   const text = getElementText(target);
-  if (anchor.blockFingerprint && fingerprintText(text) === anchor.blockFingerprint) {
+  if (
+    anchor.blockFingerprint &&
+    fingerprintText(text) === anchor.blockFingerprint
+  ) {
     score += 50;
   }
   const selectionText = normalizeText(anchor.selectionText || "");
-  if (selectionText && normalizeText(text).toLowerCase().indexOf(selectionText.toLowerCase()) !== -1) {
+  if (
+    selectionText &&
+    normalizeText(text).toLowerCase().indexOf(selectionText.toLowerCase()) !==
+      -1
+  ) {
     score += 40;
   }
   const message = findMessageContainer(target);
-  if (message && anchor.messageFingerprint && fingerprintText(getElementText(message)) === anchor.messageFingerprint) {
+  if (
+    message &&
+    anchor.messageFingerprint &&
+    fingerprintText(getElementText(message)) === anchor.messageFingerprint
+  ) {
     score += 20;
   }
   return score;
@@ -381,14 +456,17 @@ async function handleBookmarkClick(bookmarkId) {
     target.scrollIntoView({
       behavior: getOutputScrollBehavior("auto"),
       block: "center",
-      inline: "nearest"
+      inline: "nearest",
     });
     await waitForDomStable(sessionId);
     if (state.navigateSessionId !== sessionId) return;
 
     const reResolvedTarget = resolveBookmarkTarget(bookmark);
     if (reResolvedTarget && reResolvedTarget !== fallbackTarget) {
-      const reResolvedScore = estimateResolveConfidence(reResolvedTarget, bookmark);
+      const reResolvedScore = estimateResolveConfidence(
+        reResolvedTarget,
+        bookmark,
+      );
       if (reResolvedScore >= 80) {
         target = reResolvedTarget;
       }
@@ -397,14 +475,16 @@ async function handleBookmarkClick(bookmarkId) {
 
   if (state.navigateSessionId !== sessionId) return;
 
-  const preferredMatch = preferBlockHighlight ? null : resolvePreferredHighlightMatch(target, bookmark);
+  const preferredMatch = preferBlockHighlight
+    ? null
+    : resolvePreferredHighlightMatch(target, bookmark);
   pulseTab(bookmarkId);
   if (preferredMatch) {
     const preferredScroll = scrollResolvedMatchIntoView(preferredMatch);
     if (preferredScroll.didScroll) {
       scheduleTargetHighlight(target, bookmark, {
         precomputedMatch: preferredMatch,
-        preferBlockHighlight: preferBlockHighlight
+        preferBlockHighlight: preferBlockHighlight,
       });
       return;
     }
@@ -412,11 +492,11 @@ async function handleBookmarkClick(bookmarkId) {
     target.scrollIntoView({
       behavior: getOutputScrollBehavior("smooth"),
       block: "center",
-      inline: "nearest"
+      inline: "nearest",
     });
     scheduleTargetHighlight(target, bookmark, {
       precomputedMatch: preferredMatch,
-      preferBlockHighlight: preferBlockHighlight
+      preferBlockHighlight: preferBlockHighlight,
     });
     return;
   }
@@ -424,7 +504,7 @@ async function handleBookmarkClick(bookmarkId) {
   if (isTargetComfortablyVisible(target)) {
     scheduleTargetHighlight(target, bookmark, {
       immediate: true,
-      preferBlockHighlight: preferBlockHighlight
+      preferBlockHighlight: preferBlockHighlight,
     });
     return;
   }
@@ -432,10 +512,10 @@ async function handleBookmarkClick(bookmarkId) {
   target.scrollIntoView({
     behavior: getOutputScrollBehavior("smooth"),
     block: "center",
-    inline: "nearest"
+    inline: "nearest",
   });
   scheduleTargetHighlight(target, bookmark, {
-    preferBlockHighlight: preferBlockHighlight
+    preferBlockHighlight: preferBlockHighlight,
   });
 }
 
@@ -473,9 +553,15 @@ function enterInlineEdit(tab, bookmarkId, currentLabel) {
       cancelInlineEdit();
     }
   });
-  input.addEventListener("mousedown", function (e) { e.stopPropagation(); });
-  input.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
-  input.addEventListener("click", function (e) { e.stopPropagation(); });
+  input.addEventListener("mousedown", function (e) {
+    e.stopPropagation();
+  });
+  input.addEventListener("pointerdown", function (e) {
+    e.stopPropagation();
+  });
+  input.addEventListener("click", function (e) {
+    e.stopPropagation();
+  });
   // blur = cancel (not save)
   input.addEventListener("blur", function () {
     if (!_inlineEditCommitting) {
@@ -495,14 +581,18 @@ function enterInlineEdit(tab, bookmarkId, currentLabel) {
 
 function commitInlineEdit() {
   _inlineEditCommitting = true;
-  const input = state.layer ? state.layer.querySelector(".cgptbm-tab__inline-edit") : null;
+  const input = state.layer
+    ? state.layer.querySelector(".cgptbm-tab__inline-edit")
+    : null;
   if (input) {
     const bookmarkId = input.dataset.bookmarkId || "";
     const newLabel = input.value.trim();
     const tab = input.closest(".cgptbm-tab");
     const label = tab ? tab.querySelector(".cgptbm-tab__label") : null;
     cleanupInlineEdit(input);
-    const bookmark = state.currentBookmarks.find(function (b) { return b.id === bookmarkId; });
+    const bookmark = state.currentBookmarks.find(function (b) {
+      return b.id === bookmarkId;
+    });
     if (bookmark && newLabel) {
       // Update label text immediately so sync doesn't overwrite with old value
       if (label) label.textContent = newLabel;
@@ -515,7 +605,9 @@ function commitInlineEdit() {
 
 function cancelInlineEdit() {
   _inlineEditCommitting = true;
-  const input = state.layer ? state.layer.querySelector(".cgptbm-tab__inline-edit") : null;
+  const input = state.layer
+    ? state.layer.querySelector(".cgptbm-tab__inline-edit")
+    : null;
   if (input) {
     cleanupInlineEdit(input);
   }
@@ -557,9 +649,12 @@ function handleBookmarkEdit(bookmarkId, event) {
     return;
   }
 
-  const tab = event && event.currentTarget
-    ? (event.currentTarget.closest ? event.currentTarget.closest(".cgptbm-tab") : null)
-    : null;
+  const tab =
+    event && event.currentTarget
+      ? event.currentTarget.closest
+        ? event.currentTarget.closest(".cgptbm-tab")
+        : null
+      : null;
   if (!tab) return;
 
   const labelText = bookmark.label || bookmark.snippet || "Bookmark";
@@ -567,7 +662,11 @@ function handleBookmarkEdit(bookmarkId, event) {
 }
 
 export function handleDocumentPointerDown(event) {
-  if (state.bookmarkDragSession && event && event.pointerId !== state.bookmarkDragSession.pointerId) {
+  if (
+    state.bookmarkDragSession &&
+    event &&
+    event.pointerId !== state.bookmarkDragSession.pointerId
+  ) {
     clearBookmarkDragSession();
   }
 
@@ -577,11 +676,20 @@ export function handleDocumentPointerDown(event) {
   const target = event.target;
 
   if (state.colorPicker) {
-    const ownerTab = state.colorPickerBookmarkId && state.layer
-      ? state.layer.querySelector('.cgptbm-tab[data-bookmark-id="' + state.colorPickerBookmarkId + '"]')
-      : null;
-    const insideColorPicker = Boolean(target && state.colorPicker.contains(target));
-    const insideOwnerTab = Boolean(target && ownerTab && ownerTab.contains(target));
+    const ownerTab =
+      state.colorPickerBookmarkId && state.layer
+        ? state.layer.querySelector(
+            '.cgptbm-tab[data-bookmark-id="' +
+              state.colorPickerBookmarkId +
+              '"]',
+          )
+        : null;
+    const insideColorPicker = Boolean(
+      target && state.colorPicker.contains(target),
+    );
+    const insideOwnerTab = Boolean(
+      target && ownerTab && ownerTab.contains(target),
+    );
     if (!insideColorPicker && !insideOwnerTab) {
       closeBookmarkColorPicker();
     }
@@ -615,7 +723,7 @@ export function handleDocumentPointerMove(event) {
 
   const candidate = getClaudeSandboxCardCandidateAtPoint(
     event ? event.clientX : NaN,
-    event ? event.clientY : NaN
+    event ? event.clientY : NaN,
   );
   const nextKey = candidate ? candidate.key : "";
   if (nextKey === state.hoveredSandboxCardKey) {
@@ -640,13 +748,14 @@ export function handleDocumentWheel(event) {
   }
 
   const target = event.target instanceof Element ? event.target : null;
-  if (target && (
-    target.closest(".cgptbm-history-controls") ||
-    target.closest(".cgptbm-popup") ||
-    target.closest(".cgptbm-tab__popup-body") ||
-    target.closest(".cgptbm-selection-trigger") ||
-    target.closest(".cgptbm-sandbox-card-trigger")
-  )) {
+  if (
+    target &&
+    (target.closest(".cgptbm-history-controls") ||
+      target.closest(".cgptbm-popup") ||
+      target.closest(".cgptbm-tab__popup-body") ||
+      target.closest(".cgptbm-selection-trigger") ||
+      target.closest(".cgptbm-sandbox-card-trigger"))
+  ) {
     return;
   }
 
@@ -689,12 +798,20 @@ export function getPopupPositionForRect(rect) {
     return null;
   }
 
-  const top = clamp(rect.top, viewportGap, window.innerHeight - popupHeight - viewportGap);
-  const left = clamp(rect.left - popupWidth - gap, viewportGap, window.innerWidth - popupWidth - viewportGap);
+  const top = clamp(
+    rect.top,
+    viewportGap,
+    window.innerHeight - popupHeight - viewportGap,
+  );
+  const left = clamp(
+    rect.left - popupWidth - gap,
+    viewportGap,
+    window.innerWidth - popupWidth - viewportGap,
+  );
 
   return {
     top: Math.round(top),
-    left: Math.round(left)
+    left: Math.round(left),
   };
 }
 
@@ -714,17 +831,17 @@ export function getEditPopupPositionForTab(tab) {
   const top = clamp(
     tabRect.top + Math.round((tabRect.height - popupHeight) / 2),
     viewportGap,
-    window.innerHeight - popupHeight - viewportGap
+    window.innerHeight - popupHeight - viewportGap,
   );
   const left = clamp(
     edgeRect.left - popupWidth - gap,
     viewportGap,
-    window.innerWidth - popupWidth - viewportGap
+    window.innerWidth - popupWidth - viewportGap,
   );
 
   return {
     top: Math.round(top),
-    left: Math.round(left)
+    left: Math.round(left),
   };
 }
 
@@ -756,7 +873,11 @@ function canRefreshCurrentBookmarksViewAfterIncrementalRemove(bookmarkId) {
     return false;
   }
 
-  if (!state.layer.querySelector('.cgptbm-tab[data-bookmark-id="' + bookmarkId + '"]')) {
+  if (
+    !state.layer.querySelector(
+      '.cgptbm-tab[data-bookmark-id="' + bookmarkId + '"]',
+    )
+  ) {
     return false;
   }
 
@@ -775,7 +896,9 @@ export function refreshCurrentBookmarksViewAfterIncrementalRemove(bookmarkId) {
     return false;
   }
 
-  const removedTab = state.layer.querySelector('.cgptbm-tab[data-bookmark-id="' + bookmarkId + '"]');
+  const removedTab = state.layer.querySelector(
+    '.cgptbm-tab[data-bookmark-id="' + bookmarkId + '"]',
+  );
   if (!removedTab) {
     return false;
   }
@@ -787,16 +910,46 @@ export function refreshCurrentBookmarksViewAfterIncrementalRemove(bookmarkId) {
   }
 
   const knownBookmarkIds = buildKnownBookmarkIdMap(state.currentBookmarks);
-  state.hoveredBookmarkId = sanitizeBookmarkInteractionId(state.hoveredBookmarkId, knownBookmarkIds);
-  state.focusedBookmarkId = sanitizeBookmarkInteractionId(state.focusedBookmarkId, knownBookmarkIds);
-  state.createPopupPreservedExpandedBookmarkId = sanitizeBookmarkInteractionId(state.createPopupPreservedExpandedBookmarkId, knownBookmarkIds);
-  state.pinnedBookmarkIds = sanitizeBookmarkInteractionIds(state.pinnedBookmarkIds, knownBookmarkIds);
-  state.expandedPinnedBookmarkIds = sanitizeBookmarkInteractionIds(state.expandedPinnedBookmarkIds, knownBookmarkIds);
-  state.expandedPopupContentBookmarkIds = sanitizeBookmarkInteractionIds(state.expandedPopupContentBookmarkIds, knownBookmarkIds);
-  state.manualOrderBookmarkIds = normalizeManualOrderBookmarkIds(state.currentBookmarks, state.manualOrderBookmarkIds);
-  state.colorPickerLockedBookmarkId = sanitizeBookmarkInteractionId(state.colorPickerLockedBookmarkId, knownBookmarkIds);
-  state.editLockedBookmarkId = sanitizeBookmarkInteractionId(state.editLockedBookmarkId, knownBookmarkIds);
-  state.resizeLockedExpandedBookmarkId = sanitizeBookmarkInteractionId(state.resizeLockedExpandedBookmarkId, knownBookmarkIds);
+  state.hoveredBookmarkId = sanitizeBookmarkInteractionId(
+    state.hoveredBookmarkId,
+    knownBookmarkIds,
+  );
+  state.focusedBookmarkId = sanitizeBookmarkInteractionId(
+    state.focusedBookmarkId,
+    knownBookmarkIds,
+  );
+  state.createPopupPreservedExpandedBookmarkId = sanitizeBookmarkInteractionId(
+    state.createPopupPreservedExpandedBookmarkId,
+    knownBookmarkIds,
+  );
+  state.pinnedBookmarkIds = sanitizeBookmarkInteractionIds(
+    state.pinnedBookmarkIds,
+    knownBookmarkIds,
+  );
+  state.expandedPinnedBookmarkIds = sanitizeBookmarkInteractionIds(
+    state.expandedPinnedBookmarkIds,
+    knownBookmarkIds,
+  );
+  state.expandedPopupContentBookmarkIds = sanitizeBookmarkInteractionIds(
+    state.expandedPopupContentBookmarkIds,
+    knownBookmarkIds,
+  );
+  state.manualOrderBookmarkIds = normalizeManualOrderBookmarkIds(
+    state.currentBookmarks,
+    state.manualOrderBookmarkIds,
+  );
+  state.colorPickerLockedBookmarkId = sanitizeBookmarkInteractionId(
+    state.colorPickerLockedBookmarkId,
+    knownBookmarkIds,
+  );
+  state.editLockedBookmarkId = sanitizeBookmarkInteractionId(
+    state.editLockedBookmarkId,
+    knownBookmarkIds,
+  );
+  state.resizeLockedExpandedBookmarkId = sanitizeBookmarkInteractionId(
+    state.resizeLockedExpandedBookmarkId,
+    knownBookmarkIds,
+  );
   state.expandedBookmarkId = getExpandedBookmarkId();
 
   removedTab.remove();
@@ -805,9 +958,16 @@ export function refreshCurrentBookmarksViewAfterIncrementalRemove(bookmarkId) {
   if (!layoutByBookmarkId) {
     return false;
   }
-  if (!syncAnchoredRenderedBookmarkTailLayout(visibleBookmarks, layoutByBookmarkId, removedTabIndex, {
-    expandedBookmarkId: state.expandedBookmarkId
-  })) {
+  if (
+    !syncAnchoredRenderedBookmarkTailLayout(
+      visibleBookmarks,
+      layoutByBookmarkId,
+      removedTabIndex,
+      {
+        expandedBookmarkId: state.expandedBookmarkId,
+      },
+    )
+  ) {
     return false;
   }
   syncRenderedBookmarkInteractionVisuals();
@@ -848,7 +1008,9 @@ export function refreshCurrentBookmarksViewAfterIncrementalCreate(bookmarkId) {
   applyCurrentBookmarks();
 
   if (shouldAutoPin) {
-    const expanded = Array.isArray(state.expandedPinnedBookmarkIds) ? state.expandedPinnedBookmarkIds : [];
+    const expanded = Array.isArray(state.expandedPinnedBookmarkIds)
+      ? state.expandedPinnedBookmarkIds
+      : [];
     if (expanded.indexOf(bookmarkId) < 0) {
       expanded.push(bookmarkId);
       state.expandedPinnedBookmarkIds = expanded;
@@ -863,7 +1025,9 @@ export function refreshCurrentBookmarksViewAfterIncrementalCreate(bookmarkId) {
     return false;
   }
 
-  const existingTab = state.layer.querySelector('.cgptbm-tab[data-bookmark-id="' + bookmarkId + '"]');
+  const existingTab = state.layer.querySelector(
+    '.cgptbm-tab[data-bookmark-id="' + bookmarkId + '"]',
+  );
   if (existingTab) {
     return false;
   }
@@ -882,15 +1046,26 @@ export function refreshCurrentBookmarksViewAfterIncrementalCreate(bookmarkId) {
     state.emptyTab = null;
 
     const tab = createRenderedBookmarkTab(createdBookmark, bookmarkIndex);
-    insertRenderedBookmarkTabAtDisplayIndex(tab, visibleBookmarks, bookmarkIndex);
+    insertRenderedBookmarkTabAtDisplayIndex(
+      tab,
+      visibleBookmarks,
+      bookmarkIndex,
+    );
     const layoutByBookmarkId = buildRenderedTabLayoutSnapshot(visibleBookmarks);
     if (!layoutByBookmarkId) {
       return false;
     }
     state.expandedBookmarkId = getExpandedBookmarkId();
-    if (!syncAnchoredRenderedBookmarkTailLayout(visibleBookmarks, layoutByBookmarkId, bookmarkIndex, {
-      expandedBookmarkId: state.expandedBookmarkId
-    })) {
+    if (
+      !syncAnchoredRenderedBookmarkTailLayout(
+        visibleBookmarks,
+        layoutByBookmarkId,
+        bookmarkIndex,
+        {
+          expandedBookmarkId: state.expandedBookmarkId,
+        },
+      )
+    ) {
       return false;
     }
     syncRenderedBookmarkInteractionVisuals();
@@ -906,7 +1081,9 @@ export function refreshCurrentBookmarksViewAfterIncrementalCreate(bookmarkId) {
     shouldSkipCreateInteractionReconcile = true;
     return true;
   } finally {
-    endBookmarkCreateInteractionGuard({ skipReconcile: shouldSkipCreateInteractionReconcile });
+    endBookmarkCreateInteractionGuard({
+      skipReconcile: shouldSkipCreateInteractionReconcile,
+    });
   }
 }
 
@@ -923,7 +1100,11 @@ function canRefreshCurrentBookmarksViewAfterIncrementalUpdate(bookmarkId) {
     return false;
   }
 
-  return Boolean(state.layer.querySelector('.cgptbm-tab[data-bookmark-id="' + bookmarkId + '"]'));
+  return Boolean(
+    state.layer.querySelector(
+      '.cgptbm-tab[data-bookmark-id="' + bookmarkId + '"]',
+    ),
+  );
 }
 
 export function refreshCurrentBookmarksViewAfterIncrementalUpdate(bookmarkId) {
@@ -942,7 +1123,9 @@ export function refreshCurrentBookmarksViewAfterIncrementalUpdate(bookmarkId) {
   }
 
   const updatedBookmark = visibleBookmarks[bookmarkIndex];
-  const tab = state.layer.querySelector('.cgptbm-tab[data-bookmark-id="' + bookmarkId + '"]');
+  const tab = state.layer.querySelector(
+    '.cgptbm-tab[data-bookmark-id="' + bookmarkId + '"]',
+  );
   if (!updatedBookmark || !tab) {
     return false;
   }
@@ -954,9 +1137,16 @@ export function refreshCurrentBookmarksViewAfterIncrementalUpdate(bookmarkId) {
   if (!layoutByBookmarkId) {
     return false;
   }
-  if (!syncAnchoredRenderedBookmarkTailLayout(visibleBookmarks, layoutByBookmarkId, bookmarkIndex, {
-    expandedBookmarkId: state.expandedBookmarkId
-  })) {
+  if (
+    !syncAnchoredRenderedBookmarkTailLayout(
+      visibleBookmarks,
+      layoutByBookmarkId,
+      bookmarkIndex,
+      {
+        expandedBookmarkId: state.expandedBookmarkId,
+      },
+    )
+  ) {
     return false;
   }
 
@@ -1005,13 +1195,20 @@ function buildRenderedTabLayoutSnapshot(bookmarks, excludedBookmarkId) {
   return layoutByBookmarkId;
 }
 
-function syncPositionedRenderedBookmarkTabs(positionedBookmarks, layoutByBookmarkId, expandedBookmarkId) {
+function syncPositionedRenderedBookmarkTabs(
+  positionedBookmarks,
+  layoutByBookmarkId,
+  expandedBookmarkId,
+) {
   if (!state.layer) {
     return;
   }
 
   const entries = Array.isArray(positionedBookmarks) ? positionedBookmarks : [];
-  const layoutMap = layoutByBookmarkId && typeof layoutByBookmarkId === "object" ? layoutByBookmarkId : {};
+  const layoutMap =
+    layoutByBookmarkId && typeof layoutByBookmarkId === "object"
+      ? layoutByBookmarkId
+      : {};
   const tabs = getOrderedBookmarkTabs();
   if (!tabs.length) {
     return;
@@ -1026,7 +1223,8 @@ function syncPositionedRenderedBookmarkTabs(positionedBookmarks, layoutByBookmar
   });
 
   entries.forEach(function (entry, index) {
-    const bookmarkId = entry && entry.bookmark && entry.bookmark.id ? entry.bookmark.id : "";
+    const bookmarkId =
+      entry && entry.bookmark && entry.bookmark.id ? entry.bookmark.id : "";
     const tab = bookmarkId ? tabById[bookmarkId] : null;
     const layout = bookmarkId ? layoutMap[bookmarkId] : null;
     if (!tab || !layout) {
@@ -1076,13 +1274,21 @@ function syncRenderedBookmarkTabStackOrder(bookmarks, expandedBookmarkId) {
   });
 }
 
-function syncAnchoredRenderedBookmarkTailLayout(bookmarks, layoutByBookmarkId, startIndex, options) {
+function syncAnchoredRenderedBookmarkTailLayout(
+  bookmarks,
+  layoutByBookmarkId,
+  startIndex,
+  options,
+) {
   if (!state.layer) {
     return false;
   }
 
   const orderedBookmarks = Array.isArray(bookmarks) ? bookmarks : [];
-  const layoutMap = layoutByBookmarkId && typeof layoutByBookmarkId === "object" ? layoutByBookmarkId : {};
+  const layoutMap =
+    layoutByBookmarkId && typeof layoutByBookmarkId === "object"
+      ? layoutByBookmarkId
+      : {};
   if (!orderedBookmarks.length) {
     return false;
   }
@@ -1095,9 +1301,10 @@ function syncAnchoredRenderedBookmarkTailLayout(bookmarks, layoutByBookmarkId, s
   const boundedStartIndex = clamp(
     Number.isInteger(startIndex) ? startIndex : 0,
     0,
-    orderedBookmarks.length
+    orderedBookmarks.length,
   );
-  const expandedBookmarkId = options && options.expandedBookmarkId ? options.expandedBookmarkId : "";
+  const expandedBookmarkId =
+    options && options.expandedBookmarkId ? options.expandedBookmarkId : "";
   const tabById = {};
   tabs.forEach(function (tab) {
     const bookmarkId = tab.dataset.bookmarkId || "";
@@ -1109,20 +1316,36 @@ function syncAnchoredRenderedBookmarkTailLayout(bookmarks, layoutByBookmarkId, s
   let cursorTop = getBookmarkTabTopLimit();
   if (boundedStartIndex > 0) {
     const predecessor = orderedBookmarks[boundedStartIndex - 1];
-    const predecessorBookmarkId = predecessor && predecessor.id ? predecessor.id : "";
-    const predecessorTab = predecessorBookmarkId ? tabById[predecessorBookmarkId] : null;
-    const predecessorLayout = predecessorBookmarkId ? layoutMap[predecessorBookmarkId] : null;
+    const predecessorBookmarkId =
+      predecessor && predecessor.id ? predecessor.id : "";
+    const predecessorTab = predecessorBookmarkId
+      ? tabById[predecessorBookmarkId]
+      : null;
+    const predecessorLayout = predecessorBookmarkId
+      ? layoutMap[predecessorBookmarkId]
+      : null;
     if (!predecessorTab || !predecessorLayout) {
       return false;
     }
 
     const predecessorTop = Number.parseFloat(predecessorTab.style.top);
-    const nextPredecessorTop = Number.isFinite(predecessorTop) ? predecessorTop : getBookmarkTabTopLimit();
-    applyMeasuredTabLayout(predecessorTab, nextPredecessorTop, predecessorLayout);
-    cursorTop = nextPredecessorTop + predecessorLayout.totalHeight + TAB_STACK_GAP;
+    const nextPredecessorTop = Number.isFinite(predecessorTop)
+      ? predecessorTop
+      : getBookmarkTabTopLimit();
+    applyMeasuredTabLayout(
+      predecessorTab,
+      nextPredecessorTop,
+      predecessorLayout,
+    );
+    cursorTop =
+      nextPredecessorTop + predecessorLayout.totalHeight + TAB_STACK_GAP;
   }
 
-  for (let index = boundedStartIndex; index < orderedBookmarks.length; index += 1) {
+  for (
+    let index = boundedStartIndex;
+    index < orderedBookmarks.length;
+    index += 1
+  ) {
     const bookmark = orderedBookmarks[index];
     const bookmarkId = bookmark && bookmark.id ? bookmark.id : "";
     const tab = bookmarkId ? tabById[bookmarkId] : null;
@@ -1231,123 +1454,16 @@ function getRenderedFocusedBookmarkId() {
 // ============================================================
 
 export function getFilteredCurrentBookmarks() {
-  const normalizedQuery = getNormalizedBookmarkSearchQuery(state.bookmarkSearchQuery);
-  const displayOrderedBookmarks = getDisplayOrderedBookmarks(state.currentBookmarks, state.manualOrderBookmarkIds);
-  if (!normalizedQuery) {
-    return displayOrderedBookmarks;
-  }
-
-  return displayOrderedBookmarks.filter(function (bookmark) {
-    return bookmarkMatchesSearchQuery(bookmark, normalizedQuery);
-  });
-}
-
-function bookmarkMatchesSearchQuery(bookmark, normalizedQuery) {
-  if (!bookmark || !normalizedQuery) {
-    return !normalizedQuery;
-  }
-
-  return getBookmarkSearchText(bookmark).indexOf(normalizedQuery) >= 0;
-}
-
-function getBookmarkSearchText(bookmark) {
-  const anchor = bookmark && bookmark.anchor ? bookmark.anchor : null;
-  return [
-    bookmark && bookmark.label,
-    bookmark && bookmark.snippet,
-    anchor && anchor.selectionDisplayText,
-    anchor && anchor.selectionTextRaw,
-    anchor && anchor.selectionText,
-    anchor && anchor.blockTextSnippet
-  ]
-    .map(function (value) {
-      return getNormalizedBookmarkSearchQuery(value);
-    })
-    .filter(Boolean)
-    .join(" ");
-}
-
-export function getNormalizedBookmarkSearchQuery(value) {
-  return normalizeText(value).toLowerCase();
-}
-
-function highlightMatchInElement(el, query) {
-  var text = el.textContent;
-  var lower = text.toLowerCase();
-  var idx = lower.indexOf(query);
-  if (idx < 0) return;
-  var before = document.createTextNode(text.slice(0, idx));
-  var mark = document.createElement("mark");
-  mark.className = "cgptbm-search-match";
-  mark.textContent = text.slice(idx, idx + query.length);
-  var after = document.createTextNode(text.slice(idx + query.length));
-  el.textContent = "";
-  el.appendChild(before);
-  el.appendChild(mark);
-  el.appendChild(after);
+  return getFilteredBookmarks(
+    state.currentBookmarks,
+    state.manualOrderBookmarkIds,
+    state.bookmarkSearchQuery,
+  );
 }
 
 // ============================================================
 // GROUP 7 — Search UI
 // ============================================================
-
-function createBookmarkHistoryIcon(direction) {
-  const icon = document.createElement("span");
-  icon.className = "cgptbm-history-controls__icon";
-  icon.setAttribute("aria-hidden", "true");
-  if (direction === "redo") {
-    icon.textContent = "\u21BB";
-  } else if (direction === "collapse") {
-    icon.textContent = "\u229F";
-  } else if (direction === "expand") {
-    icon.textContent = "\u229E";
-  } else if (direction === "restore") {
-    icon.textContent = "\u229E";
-  } else {
-    icon.textContent = "\u21BA";
-  }
-  return icon;
-}
-
-// ---- 독립 버튼 SVG 아이콘 ----
-
-function createButtonSvgIcon(type) {
-  const icon = document.createElement("span");
-  icon.className = "cgptbm-history-controls__icon cgptbm-history-controls__icon--svg";
-  icon.setAttribute("aria-hidden", "true");
-  if (type === "tab-collapse") {
-    // 최소화 아이콘 (가로 줄 1개)
-    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2.5" y1="6" x2="9.5" y2="6"/></svg>';
-  } else if (type === "tab-extend") {
-    // 기울어진 핀 아이콘 (몸체 + 바늘)
-    icon.innerHTML = '<svg viewBox="-5 5 48 48" width="11" height="11" fill="currentColor" stroke="none"><path d="M31 3L32.5 3L45 15.5Q45.8 17.8 43.5 17Q42.2 19.3 37.5 18L36 19.5L32 25.5Q33.9 34.9 29.5 38L10 19.5L11.5 17Q15 14.5 22.5 16L30 10.5Q29.4 5.1 31 3Z"/><path d="M15.5 30L18 31.5L6.5 44Q2.8 45.3 4 41.5L15.5 30Z"/></svg>';
-  } else if (type === "tab-extend-hover") {
-    // 기울어진 핀 아이콘 (몸체만, 바늘 제거)
-    icon.innerHTML = '<svg viewBox="-5 5 48 48" width="11" height="11" fill="currentColor" stroke="none"><path d="M31 3L32.5 3L45 15.5Q45.8 17.8 43.5 17Q42.2 19.3 37.5 18L36 19.5L32 25.5Q33.9 34.9 29.5 38L10 19.5L11.5 17Q15 14.5 22.5 16L30 10.5Q29.4 5.1 31 3Z"/></svg>';
-  } else if (type === "tab-extend-disabled") {
-    // 기울어진 핀 아이콘 (몸체만, 비활성 색상)
-    icon.innerHTML = '<svg viewBox="-5 5 48 48" width="11" height="11" fill="currentColor" stroke="none"><path d="M31 3L32.5 3L45 15.5Q45.8 17.8 43.5 17Q42.2 19.3 37.5 18L36 19.5L32 25.5Q33.9 34.9 29.5 38L10 19.5L11.5 17Q15 14.5 22.5 16L30 10.5Q29.4 5.1 31 3Z"/></svg>';
-  } else if (type === "postit-extend") {
-    // 중앙 배치 오목 삼각형 (inward와 동일)
-    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" stroke="none"><path d="M4 3L10 3L10 9Q9.5 3.5 4 3"/><path d="M8 9L2 9L2 3Q2.5 8.5 8 9"/></svg>';
-  } else if (type === "postit-extend-phase2") {
-    // 직사각형 (뒤) + 핀 아이콘 (앞)
-    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" stroke="none" style="overflow:visible"><rect x="1.5" y="5.5" width="9" height="7" rx="1" fill="#888"/><g transform="translate(1.6,0) scale(0.66)"><path d="M8 1.6C10.08 1.6 11.45 2.7 11.45 4.04C11.45 4.67 11.15 5.24 10.6 5.64L10.32 7.72L11.95 8.98C12.26 9.22 12.09 9.72 11.7 9.72H8.82V13.08C8.82 13.44 8.46 13.72 8 13.72C7.54 13.72 7.18 13.44 7.18 13.08V9.72H4.3C3.91 9.72 3.74 9.22 4.05 8.98L5.68 7.72L5.4 5.64C4.85 5.24 4.55 4.67 4.55 4.04C4.55 2.7 5.92 1.6 8 1.6Z"/><ellipse cx="8" cy="4.02" rx="2.25" ry="1.14" fill="rgba(255,255,255,0.28)"/></g></svg>';
-  } else if (type === "postit-extend-outward") {
-    // close 버튼 기본 (직각 내측, 간격 넓음)
-    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" stroke="none" style="overflow:visible"><path d="M8 -1L8 5L14 5Q8.5 4.5 8 -1"/><path d="M4 13L4 7L-2 7Q3.5 7.5 4 13"/></svg>';
-  } else if (type === "postit-close-hover") {
-    // close 호버 (close button 형태, xy간격 0)
-    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" stroke="none"><path d="M6 1L6 7L12 7Q6.5 6.5 6 1"/><path d="M6 11L6 5L0 5Q5.5 5.5 6 11"/></svg>';
-  } else if (type === "postit-open-hover") {
-    // open 호버 (원래 outward, 직각 바깥)
-    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" stroke="none" style="overflow:visible"><path d="M6 1L12 1L12 7Q11.5 1.5 6 1"/><path d="M6 11L0 11L0 5Q0.5 10.5 6 11"/></svg>';
-  } else if (type === "postit-extend-inward") {
-    // 안쪽 방향 삼각형 (직각→중심 거리≈2.83)
-    icon.innerHTML = '<svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" stroke="none"><path d="M4 3L10 3L10 9Q9.5 3.5 4 3"/><path d="M8 9L2 9L2 3Q2.5 8.5 8 9"/></svg>';
-  }
-  return icon;
-}
 
 function createBookmarkSearchRow() {
   const searchRow = document.createElement("div");
@@ -1384,6 +1500,7 @@ function createBookmarkSearchRow() {
   searchWrap.appendChild(input);
   searchWrap.appendChild(clearButton);
   searchRow.appendChild(searchWrap);
+  searchRow.appendChild(status);
 
   state.searchInput = input;
   state.searchClearButton = clearButton;
@@ -1397,15 +1514,23 @@ function ensureBookmarkSearchControls(controls) {
     return;
   }
 
-  let searchRow = controls.querySelector(".cgptbm-history-controls__search-row");
+  let searchRow = controls.querySelector(
+    ".cgptbm-history-controls__search-row",
+  );
   if (!searchRow) {
     searchRow = createBookmarkSearchRow();
     controls.appendChild(searchRow);
   }
 
-  state.searchInput = controls.querySelector(".cgptbm-history-controls__search-input");
-  state.searchClearButton = controls.querySelector(".cgptbm-history-controls__search-clear");
-  state.searchStatus = controls.querySelector(".cgptbm-history-controls__search-status");
+  state.searchInput = controls.querySelector(
+    ".cgptbm-history-controls__search-input",
+  );
+  state.searchClearButton = controls.querySelector(
+    ".cgptbm-history-controls__search-clear",
+  );
+  state.searchStatus = controls.querySelector(
+    ".cgptbm-history-controls__search-status",
+  );
   syncBookmarkSearchControls();
 }
 
@@ -1415,18 +1540,20 @@ function syncBookmarkSearchControls() {
   const searchStatus = state.searchStatus;
   const hasBookmarks = state.currentBookmarks.length > 0;
   const hasQuery = Boolean(state.bookmarkSearchQuery);
-  const filteredCount = hasBookmarks || hasQuery
-    ? getFilteredCurrentBookmarks().length
-    : 0;
+  const filteredCount =
+    hasBookmarks || hasQuery ? getFilteredCurrentBookmarks().length : 0;
 
   if (searchInput) {
     if (searchInput.value !== state.bookmarkSearchQuery) {
       searchInput.value = state.bookmarkSearchQuery;
     }
     searchInput.disabled = !state.railEnabled || (!hasBookmarks && !hasQuery);
-    searchInput.placeholder = hasBookmarks || hasQuery
-      ? (state.currentBookmarks.length === 1 ? "Search Tab" : "Search Tabs")
-      : "Drag to select text";
+    searchInput.placeholder =
+      hasBookmarks || hasQuery
+        ? state.currentBookmarks.length === 1
+          ? "Search bookmark"
+          : "Search bookmarks"
+        : "Select text, then MARK";
   }
 
   if (clearButton) {
@@ -1434,45 +1561,21 @@ function syncBookmarkSearchControls() {
     clearButton.disabled = !hasQuery;
   }
 
-}
-
-function getBookmarkSearchStatusText(options) {
-  const totalCount = Number(options && options.totalCount) || 0;
-  const filteredCount = Number(options && options.filteredCount) || 0;
-  const hasQuery = Boolean(options && options.hasQuery);
-
-  if (!totalCount) {
-    return "";
+  if (searchStatus) {
+    const statusText = getBookmarkSearchStatusText({
+      totalCount: state.currentBookmarks.length,
+      filteredCount: filteredCount,
+      hasQuery: hasQuery,
+    });
+    const statusTitle = getBookmarkSearchStatusTitle({
+      totalCount: state.currentBookmarks.length,
+      filteredCount: filteredCount,
+      hasQuery: hasQuery,
+    });
+    searchStatus.textContent = statusText;
+    searchStatus.title = statusTitle;
+    searchStatus.hidden = !statusText;
   }
-
-  if (!hasQuery) {
-    if (totalCount >= MAX_BOOKMARKS_PER_PAGE) {
-      return "All used";
-    }
-    return totalCount + "/" + MAX_BOOKMARKS_PER_PAGE + " bookmarks";
-  }
-
-  return filteredCount + "/" + totalCount + " shown";
-}
-
-function getBookmarkSearchStatusTitle(options) {
-  const totalCount = Number(options && options.totalCount) || 0;
-  const filteredCount = Number(options && options.filteredCount) || 0;
-  const hasQuery = Boolean(options && options.hasQuery);
-
-  if (!totalCount) {
-    return "";
-  }
-
-  if (!hasQuery) {
-    return totalCount === 1
-      ? "1 bookmark is saved on this page. (1 of " + MAX_BOOKMARKS_PER_PAGE + ")"
-      : totalCount + " bookmarks are saved on this page. (" + totalCount + " of " + MAX_BOOKMARKS_PER_PAGE + ")";
-  }
-
-  return filteredCount === 1
-    ? "1 of " + totalCount + " saved bookmarks matches this search."
-    : filteredCount + " of " + totalCount + " saved bookmarks match this search.";
 }
 
 export function setBookmarkSearchQuery(value) {
@@ -1580,7 +1683,9 @@ function createBookmarkHistoryControls() {
   slider.min = String(Math.round(MIN_RAIL_OPACITY * 100));
   slider.max = String(Math.round(MAX_RAIL_OPACITY * 100));
   slider.step = "5";
-  slider.value = String(Math.round(normalizeRailOpacity(state.railOpacity) * 100));
+  slider.value = String(
+    Math.round(normalizeRailOpacity(state.railOpacity) * 100),
+  );
   slider.title = "Adjust bookmark rail opacity";
   slider.setAttribute("aria-label", "Adjust bookmark rail opacity");
   slider.oninput = handleRailOpacitySliderInput;
@@ -1610,17 +1715,23 @@ function createBookmarkHistoryControls() {
   tabExtendButton.addEventListener("mouseenter", function () {
     if (tabExtendButton.disabled) return;
     var ap = tabExtendButton.dataset.allPinned === "1";
-    var oldIcon = tabExtendButton.querySelector(".cgptbm-history-controls__icon");
+    var oldIcon = tabExtendButton.querySelector(
+      ".cgptbm-history-controls__icon",
+    );
     var newIcon = createButtonSvgIcon(ap ? "tab-extend" : "tab-extend-hover");
     if (oldIcon) tabExtendButton.replaceChild(newIcon, oldIcon);
   });
   tabExtendButton.addEventListener("mouseleave", function () {
     if (tabExtendButton.disabled) return;
-    var iconSvg = tabExtendButton.querySelector(".cgptbm-history-controls__icon--svg");
+    var iconSvg = tabExtendButton.querySelector(
+      ".cgptbm-history-controls__icon--svg",
+    );
     if (iconSvg) iconSvg.style.transform = "";
     tabExtendButton.style.boxShadow = "";
     var ap = tabExtendButton.dataset.allPinned === "1";
-    var oldIcon = tabExtendButton.querySelector(".cgptbm-history-controls__icon");
+    var oldIcon = tabExtendButton.querySelector(
+      ".cgptbm-history-controls__icon",
+    );
     var newIcon = createButtonSvgIcon(ap ? "tab-extend-hover" : "tab-extend");
     if (oldIcon) tabExtendButton.replaceChild(newIcon, oldIcon);
   });
@@ -1637,8 +1748,12 @@ function createBookmarkHistoryControls() {
   postitExtendButton.addEventListener("mouseenter", function () {
     if (postitExtendButton.disabled) return;
     var ap = postitExtendButton.dataset.allPostits === "1";
-    var oldIcon = postitExtendButton.querySelector(".cgptbm-history-controls__icon");
-    var newIcon = createButtonSvgIcon(ap ? "postit-close-hover" : "postit-open-hover");
+    var oldIcon = postitExtendButton.querySelector(
+      ".cgptbm-history-controls__icon",
+    );
+    var newIcon = createButtonSvgIcon(
+      ap ? "postit-close-hover" : "postit-open-hover",
+    );
     if (oldIcon) postitExtendButton.replaceChild(newIcon, oldIcon);
   });
   postitExtendButton.addEventListener("mouseleave", function () {
@@ -1646,8 +1761,12 @@ function createBookmarkHistoryControls() {
     postitExtendButton.style.boxShadow = "";
     delete postitExtendButton.dataset.preClickPostit;
     var ap = postitExtendButton.dataset.allPostits === "1";
-    var oldIcon = postitExtendButton.querySelector(".cgptbm-history-controls__icon");
-    var newIcon = createButtonSvgIcon(ap ? "postit-extend-outward" : "postit-extend-inward");
+    var oldIcon = postitExtendButton.querySelector(
+      ".cgptbm-history-controls__icon",
+    );
+    var newIcon = createButtonSvgIcon(
+      ap ? "postit-extend-outward" : "postit-extend-inward",
+    );
     if (oldIcon) postitExtendButton.replaceChild(newIcon, oldIcon);
   });
 
@@ -1683,7 +1802,9 @@ function syncBookmarkHistoryControls(top) {
   const undoButton = controls.querySelector('[data-history-action="undo"]');
   const redoButton = controls.querySelector('[data-history-action="redo"]');
   const slider = controls.querySelector(".cgptbm-history-controls__slider");
-  const toggleButton = controls.querySelector(".cgptbm-history-controls__toggle");
+  const toggleButton = controls.querySelector(
+    ".cgptbm-history-controls__toggle",
+  );
   const canUndo = state.railEnabled && canUndoBookmarkHistory();
   const canRedo = state.railEnabled && canRedoBookmarkHistory();
 
@@ -1697,17 +1818,26 @@ function syncBookmarkHistoryControls(top) {
   }
   if (slider) {
     slider.disabled = !state.railEnabled;
-    slider.value = String(Math.round(normalizeRailOpacity(state.railOpacity) * 100));
+    slider.value = String(
+      Math.round(normalizeRailOpacity(state.railOpacity) * 100),
+    );
     syncRailOpacitySliderVisual(slider);
   }
   if (toggleButton) {
     toggleButton.classList.toggle("is-enabled", state.railEnabled);
-    toggleButton.title = state.railEnabled ? "Disable bookmark rail" : "Enable bookmark rail";
-    toggleButton.setAttribute("aria-label", state.railEnabled ? "Disable bookmark rail" : "Enable bookmark rail");
+    toggleButton.title = state.railEnabled
+      ? "Disable bookmark rail"
+      : "Enable bookmark rail";
+    toggleButton.setAttribute(
+      "aria-label",
+      state.railEnabled ? "Disable bookmark rail" : "Enable bookmark rail",
+    );
   }
 
   // ---- Tab Collapse ----
-  const collapseButton = controls.querySelector('[data-history-action="collapse-all"]');
+  const collapseButton = controls.querySelector(
+    '[data-history-action="collapse-all"]',
+  );
   if (collapseButton) {
     const canCollapse = state.railEnabled && hasExpandedPinnedState();
     collapseButton.disabled = !canCollapse;
@@ -1715,18 +1845,24 @@ function syncBookmarkHistoryControls(top) {
   }
 
   // ---- Tab Extension ----
-  const tabExtendButton = controls.querySelector('[data-history-action="tab-extend"]');
+  const tabExtendButton = controls.querySelector(
+    '[data-history-action="tab-extend"]',
+  );
   if (tabExtendButton) {
     const canTabExtend = state.railEnabled && canExpandAllTabs();
     const allPinned = isAllPinned();
     tabExtendButton.disabled = !canTabExtend;
     tabExtendButton.classList.toggle("is-enabled", canTabExtend);
-    const tabExtIconType = !canTabExtend ? "tab-extend-disabled"
-      : allPinned ? "tab-extend-hover"
-      : "tab-extend";
+    const tabExtIconType = !canTabExtend
+      ? "tab-extend-disabled"
+      : allPinned
+        ? "tab-extend-hover"
+        : "tab-extend";
     const prevTabExtIcon = tabExtendButton.dataset.iconType || "";
     if (prevTabExtIcon !== tabExtIconType) {
-      const oldIcon = tabExtendButton.querySelector(".cgptbm-history-controls__icon");
+      const oldIcon = tabExtendButton.querySelector(
+        ".cgptbm-history-controls__icon",
+      );
       const newIcon = createButtonSvgIcon(tabExtIconType);
       if (oldIcon) {
         tabExtendButton.replaceChild(newIcon, oldIcon);
@@ -1737,18 +1873,24 @@ function syncBookmarkHistoryControls(top) {
   }
 
   // ---- Post-it Extension (on/off 토글) ----
-  const postitExtendButton = controls.querySelector('[data-history-action="postit-extend"]');
+  const postitExtendButton = controls.querySelector(
+    '[data-history-action="postit-extend"]',
+  );
   if (postitExtendButton) {
     const canPostitExtend = state.railEnabled && canExpandAllPostits();
     const allPostits = isAllPostits();
     postitExtendButton.disabled = !canPostitExtend;
     postitExtendButton.classList.toggle("is-enabled", canPostitExtend);
-    const postitIconType = !canPostitExtend ? "postit-extend"
-      : allPostits ? "postit-extend-outward"
-      : "postit-extend";
+    const postitIconType = !canPostitExtend
+      ? "postit-extend"
+      : allPostits
+        ? "postit-extend-outward"
+        : "postit-extend";
     const prevPostitIcon = postitExtendButton.dataset.iconType || "";
     if (prevPostitIcon !== postitIconType) {
-      const oldIcon = postitExtendButton.querySelector(".cgptbm-history-controls__icon");
+      const oldIcon = postitExtendButton.querySelector(
+        ".cgptbm-history-controls__icon",
+      );
       const newIcon = createButtonSvgIcon(postitIconType);
       if (oldIcon) {
         postitExtendButton.replaceChild(newIcon, oldIcon);
@@ -1824,9 +1966,12 @@ async function handleTabExtend(event) {
       if (oldIcon) button.replaceChild(newIcon, oldIcon);
       var iconSvg = button.querySelector(".cgptbm-history-controls__icon--svg");
       if (iconSvg) {
-        iconSvg.style.transform = wasAllPinned ? "none" : "translate(-2.2px, 2.2px)";
+        iconSvg.style.transform = wasAllPinned
+          ? "none"
+          : "translate(-2.2px, 2.2px)";
       }
-      button.style.boxShadow = "inset 0 2px 3px hsla(133, 30%, 40%, 0.5), inset 0 -1px 2px hsla(133, 14%, 10%, 0.3)";
+      button.style.boxShadow =
+        "inset 0 2px 3px hsla(133, 30%, 40%, 0.5), inset 0 -1px 2px hsla(133, 14%, 10%, 0.3)";
     }
   } finally {
     _bulkTogglePending = false;
@@ -1846,11 +1991,14 @@ async function handlePostitExtend(event) {
     await expandAllPostits();
     syncBookmarkHistoryControlsToCurrentRail();
     if (button && button.matches(":hover")) {
-      var hoverIconType = wasAllPostits ? "postit-open-hover" : "postit-close-hover";
+      var hoverIconType = wasAllPostits
+        ? "postit-open-hover"
+        : "postit-close-hover";
       var oldIcon = button.querySelector(".cgptbm-history-controls__icon");
       var newIcon = createButtonSvgIcon(hoverIconType);
       if (oldIcon) button.replaceChild(newIcon, oldIcon);
-      button.style.boxShadow = "inset 0 2px 3px hsla(230, 30%, 40%, 0.5), inset 0 -1px 2px hsla(230, 27%, 8%, 0.3)";
+      button.style.boxShadow =
+        "inset 0 2px 3px hsla(230, 30%, 40%, 0.5), inset 0 -1px 2px hsla(230, 27%, 8%, 0.3)";
       button.dataset.preClickPostit = wasAllPostits ? "1" : "0";
     }
   } finally {
@@ -1928,7 +2076,10 @@ function syncRailOpacitySliderVisual(slider) {
   const value = Number(slider.value || min);
   const range = Math.max(1, max - min);
   const progress = clamp(((value - min) / range) * 100, 0, 100);
-  slider.style.setProperty("--cgptbm-slider-progress", progress.toFixed(3) + "%");
+  slider.style.setProperty(
+    "--cgptbm-slider-progress",
+    progress.toFixed(3) + "%",
+  );
 }
 
 export function applyRailOpacity() {
@@ -1971,14 +2122,25 @@ function syncRailViewportTop() {
   const controls = state.root.querySelector(".cgptbm-history-controls");
 
   if (!(controls instanceof HTMLElement)) {
-    state.root.style.setProperty("--cgptbm-rail-viewport-top", RAIL_VIEWPORT_DEFAULT_TOP + "px");
+    state.root.style.setProperty(
+      "--cgptbm-rail-viewport-top",
+      RAIL_VIEWPORT_DEFAULT_TOP + "px",
+    );
     return;
   }
 
   const controlsTop = Number.parseFloat(controls.style.top);
-  const controlsBottom = (Number.isFinite(controlsTop) ? controlsTop : getHistoryControlsTop()) + controls.offsetHeight;
-  const nextViewportTop = Math.max(0, Math.ceil(controlsBottom + RAIL_VIEWPORT_CONTROLS_GAP));
-  state.root.style.setProperty("--cgptbm-rail-viewport-top", nextViewportTop + "px");
+  const controlsBottom =
+    (Number.isFinite(controlsTop) ? controlsTop : getHistoryControlsTop()) +
+    controls.offsetHeight;
+  const nextViewportTop = Math.max(
+    0,
+    Math.ceil(controlsBottom + RAIL_VIEWPORT_CONTROLS_GAP),
+  );
+  state.root.style.setProperty(
+    "--cgptbm-rail-viewport-top",
+    nextViewportTop + "px",
+  );
 }
 
 export function syncRailViewportWidth(options) {
@@ -1991,28 +2153,56 @@ export function syncRailViewportWidth(options) {
     return;
   }
 
-  const widestVisiblePopup = Array.from(state.layer.querySelectorAll(".cgptbm-tab__popup")).reduce(function (maxWidth, popup) {
+  const widestVisiblePopup = Array.from(
+    state.layer.querySelectorAll(".cgptbm-tab__popup"),
+  ).reduce(function (maxWidth, popup) {
     return Math.max(maxWidth, Math.ceil(popup.offsetWidth || 0));
   }, 0);
 
-  const widestExpandedTab = Array.from(state.layer.querySelectorAll(".cgptbm-tab.is-expanded .cgptbm-tab__surface-clip")).reduce(function (maxWidth, clip) {
-    return Math.max(maxWidth, Math.ceil(clip.getBoundingClientRect().width || 0));
+  const widestExpandedTab = Array.from(
+    state.layer.querySelectorAll(
+      ".cgptbm-tab.is-expanded .cgptbm-tab__surface-clip",
+    ),
+  ).reduce(function (maxWidth, clip) {
+    return Math.max(
+      maxWidth,
+      Math.ceil(clip.getBoundingClientRect().width || 0),
+    );
   }, 0);
 
-  var popupPadding = (widestVisiblePopup && widestVisiblePopup + RAIL_VIEWPORT_LEFT_BUFFER > RAIL_VIEWPORT_WIDTH)
-    ? EXPANDED_POPUP_LEFT_PADDING : 0;
+  var popupPadding =
+    widestVisiblePopup &&
+    widestVisiblePopup + RAIL_VIEWPORT_LEFT_BUFFER > RAIL_VIEWPORT_WIDTH
+      ? EXPANDED_POPUP_LEFT_PADDING
+      : 0;
 
   const nextWidth = Math.max(
     COLLAPSED_TAB_VISIBLE_EDGE_WIDTH,
-    widestExpandedTab ? widestExpandedTab + RAIL_VIEWPORT_LEFT_BUFFER + EXPANDED_TAB_LEFT_PADDING + EXPANDED_TAB_RIGHT_EXTENSION : 0,
-    widestVisiblePopup ? widestVisiblePopup + RAIL_VIEWPORT_LEFT_BUFFER + popupPadding : 0
+    widestExpandedTab
+      ? widestExpandedTab +
+          RAIL_VIEWPORT_LEFT_BUFFER +
+          EXPANDED_TAB_LEFT_PADDING +
+          EXPANDED_TAB_RIGHT_EXTENSION
+      : 0,
+    widestVisiblePopup
+      ? widestVisiblePopup + RAIL_VIEWPORT_LEFT_BUFFER + popupPadding
+      : 0,
   );
 
   const rightExtension = widestExpandedTab ? EXPANDED_TAB_RIGHT_EXTENSION : 0;
 
-  state.root.style.setProperty("--cgptbm-rail-viewport-width", nextWidth + "px");
-  state.root.style.setProperty("--cgptbm-rail-scroll-hitbox-width", nextWidth + "px");
-  state.root.style.setProperty("--cgptbm-rail-scroll-hitbox-right", -rightExtension + "px");
+  state.root.style.setProperty(
+    "--cgptbm-rail-viewport-width",
+    nextWidth + "px",
+  );
+  state.root.style.setProperty(
+    "--cgptbm-rail-scroll-hitbox-width",
+    nextWidth + "px",
+  );
+  state.root.style.setProperty(
+    "--cgptbm-rail-scroll-hitbox-right",
+    -rightExtension + "px",
+  );
 }
 
 export function bindTopRightUiProtectionObserver() {
@@ -2027,7 +2217,15 @@ export function bindTopRightUiProtectionObserver() {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["class", "style", "hidden", "open", "aria-hidden", "aria-expanded", "data-state"]
+    attributeFilter: [
+      "class",
+      "style",
+      "hidden",
+      "open",
+      "aria-hidden",
+      "aria-expanded",
+      "data-state",
+    ],
   });
   state.topRightUiObserver = observer;
 }
@@ -2050,13 +2248,23 @@ function syncTopRightUiProtection() {
 
   const blockerRect = getTopRightBlockerRect();
   const nextRightOffset = blockerRect
-    ? Math.max(ROOT_RIGHT_OFFSET, Math.ceil(window.innerWidth - blockerRect.left + TOP_RIGHT_BLOCKER_SAFE_GAP + SCROLLBAR_RIGHT_OVERHANG))
+    ? Math.max(
+        ROOT_RIGHT_OFFSET,
+        Math.ceil(
+          window.innerWidth -
+            blockerRect.left +
+            TOP_RIGHT_BLOCKER_SAFE_GAP +
+            SCROLLBAR_RIGHT_OVERHANG,
+        ),
+      )
     : ROOT_RIGHT_OFFSET;
   state.root.style.setProperty("--cgptbm-root-right", nextRightOffset + "px");
 }
 
 function getTopRightBlockerRect() {
-  const candidates = Array.from(document.querySelectorAll(TOP_RIGHT_BLOCKER_SELECTOR));
+  const candidates = Array.from(
+    document.querySelectorAll(TOP_RIGHT_BLOCKER_SELECTOR),
+  );
   let bestRect = null;
   let bestArea = 0;
 
@@ -2115,7 +2323,9 @@ export function getRailViewportTop() {
     return RAIL_VIEWPORT_DEFAULT_TOP;
   }
 
-  const value = Number.parseFloat(state.root.style.getPropertyValue("--cgptbm-rail-viewport-top"));
+  const value = Number.parseFloat(
+    state.root.style.getPropertyValue("--cgptbm-rail-viewport-top"),
+  );
   return Number.isFinite(value) ? value : RAIL_VIEWPORT_DEFAULT_TOP;
 }
 
@@ -2136,34 +2346,48 @@ export function renderBookmarks() {
   const visibleBookmarks = getFilteredCurrentBookmarks();
   syncBookmarkHistoryControls(getHistoryControlsTop());
 
-  if (state.colorPicker && !visibleBookmarks.some(function (bookmark) {
-    return bookmark && bookmark.id === state.colorPickerBookmarkId;
-  })) {
+  if (
+    state.colorPicker &&
+    !visibleBookmarks.some(function (bookmark) {
+      return bookmark && bookmark.id === state.colorPickerBookmarkId;
+    })
+  ) {
     closeBookmarkColorPicker();
   }
 
-  if (state.popup && state.pendingBookmarkId && !visibleBookmarks.some(function (bookmark) {
-    return bookmark && bookmark.id === state.pendingBookmarkId;
-  })) {
+  if (
+    state.popup &&
+    state.pendingBookmarkId &&
+    !visibleBookmarks.some(function (bookmark) {
+      return bookmark && bookmark.id === state.pendingBookmarkId;
+    })
+  ) {
     closeSavePopup();
   }
 
-  Array.from(state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id], .cgptbm-tab--empty")).forEach(function (node) {
+  Array.from(
+    state.layer.querySelectorAll(
+      ".cgptbm-tab[data-bookmark-id], .cgptbm-tab--empty",
+    ),
+  ).forEach(function (node) {
     node.remove();
   });
 
   if (!state.currentBookmarks.length) {
     resetExpandedBookmarkState();
     const emptyTab = createTabElement({
-      label: "Drag to select text",
-      edgeText: "\u2022",
+      label: "Select text \u2192 MARK",
+      edgeText: "+",
       accent: "#94a3b8",
-      title: "Add a bookmark from your current selection or visible message."
+      title:
+        "Create your first bookmark: select any sentence or paragraph, then click MARK.",
     });
     emptyTab.classList.add("cgptbm-tab--empty");
     emptyTab.style.top = getBookmarkTabTopLimit() + "px";
     emptyTab.style.height = COLLAPSED_TAB_HEIGHT + "px";
-    emptyTab.querySelector(".cgptbm-tab__button").setAttribute("aria-hidden", "true");
+    emptyTab
+      .querySelector(".cgptbm-tab__button")
+      .setAttribute("aria-hidden", "true");
     emptyTab.querySelector(".cgptbm-tab__button").tabIndex = -1;
     state.layer.appendChild(emptyTab);
     state.emptyTab = emptyTab;
@@ -2176,18 +2400,24 @@ export function renderBookmarks() {
   if (!visibleBookmarks.length) {
     const totalCount = state.currentBookmarks.length;
     const emptyTab = createTabElement({
-      label: "No matches",
-      edgeText: "?",
+      label: "No search matches",
+      edgeText: "x",
       accent: "#94a3b8",
-      title: 'No bookmarks on this page match "' + state.bookmarkSearchQuery + '". ' +
+      title:
+        'No bookmarks on this page match "' +
+        state.bookmarkSearchQuery +
+        '". ' +
         (totalCount === 1
-          ? "1 bookmark is still saved on this page."
-          : totalCount + " bookmarks are still saved on this page.")
+          ? "1 bookmark is still saved on this page. Clear the search to show it again."
+          : totalCount +
+            " bookmarks are still saved on this page. Clear the search to show them again."),
     });
     emptyTab.classList.add("cgptbm-tab--empty");
     emptyTab.style.top = getBookmarkTabTopLimit() + "px";
     emptyTab.style.height = COLLAPSED_TAB_HEIGHT + "px";
-    emptyTab.querySelector(".cgptbm-tab__button").setAttribute("aria-hidden", "true");
+    emptyTab
+      .querySelector(".cgptbm-tab__button")
+      .setAttribute("aria-hidden", "true");
     emptyTab.querySelector(".cgptbm-tab__button").tabIndex = -1;
     state.layer.appendChild(emptyTab);
     state.emptyTab = emptyTab;
@@ -2223,12 +2453,12 @@ export function createRenderedBookmarkTab(bookmark, index) {
     popupTitle: bookmark.label || "Bookmark",
     popupOnClose: hasPinnedPopup
       ? function (event) {
-        if (event) {
-          event.preventDefault();
-          event.stopPropagation();
+          if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          togglePinnedBookmark(bookmark.id);
         }
-        togglePinnedBookmark(bookmark.id);
-      }
       : null,
     edgeText: String(index + 1),
     accent: color,
@@ -2238,12 +2468,14 @@ export function createRenderedBookmarkTab(bookmark, index) {
         key: "expand-pin-toggle",
         label: "P",
         icon: "expand-pin",
-        title: hasPinnedExpansion ? "Release expanded bookmark" : "Keep bookmark expanded",
+        title: hasPinnedExpansion
+          ? "Release expanded bookmark"
+          : "Keep bookmark expanded",
         className: "cgptbm-tab__action--expand-pin",
         isSelected: hasPinnedExpansion,
         onClick: function () {
           toggleExpandedPinnedBookmark(bookmark.id);
-        }
+        },
       },
       {
         label: "E",
@@ -2252,17 +2484,19 @@ export function createRenderedBookmarkTab(bookmark, index) {
         className: "cgptbm-tab__action--edit",
         onClick: function (event) {
           handleBookmarkEdit(bookmark.id, event);
-        }
+        },
       },
       {
         key: "pin-toggle",
         label: hasPinnedPopup ? "-" : "+",
-        title: hasPinnedPopup ? "Hide saved text popup" : "Show saved text popup",
+        title: hasPinnedPopup
+          ? "Hide saved text popup"
+          : "Show saved text popup",
         className: "cgptbm-tab__action--pin",
         isSelected: hasPinnedPopup,
         onClick: function () {
           togglePinnedBookmark(bookmark.id);
-        }
+        },
       },
       {
         label: "X",
@@ -2273,9 +2507,9 @@ export function createRenderedBookmarkTab(bookmark, index) {
           event.stopPropagation();
           if (_inlineEditBookmarkId) cancelInlineEdit();
           handleBookmarkRemove(bookmark.id);
-        }
-      }
-    ]
+        },
+      },
+    ],
   });
 
   tab.dataset.bookmarkId = bookmark.id;
@@ -2286,7 +2520,9 @@ export function createRenderedBookmarkTab(bookmark, index) {
   }
 
   const button = tab.querySelector(".cgptbm-tab__button");
-  const collapsedHoverZone = tab.querySelector(".cgptbm-tab__collapsed-hover-zone");
+  const collapsedHoverZone = tab.querySelector(
+    ".cgptbm-tab__collapsed-hover-zone",
+  );
   const surface = tab.querySelector(".cgptbm-tab__surface");
   const edge = tab.querySelector(".cgptbm-tab__edge");
   button.addEventListener("mousedown", preventFocusSteal);
@@ -2386,7 +2622,9 @@ function syncRenderedColorPickerEdges() {
     return;
   }
 
-  Array.from(state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]")).forEach(function (tab) {
+  Array.from(
+    state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]"),
+  ).forEach(function (tab) {
     const bookmarkId = tab.dataset.bookmarkId || "";
     const edge = tab.querySelector(".cgptbm-tab__edge");
     if (!edge) {
@@ -2403,55 +2641,11 @@ function syncRenderedColorPickerEdges() {
 }
 
 export function computeTabPositions(bookmarks, options) {
-  const nextOptions = options || {};
-  const topLimit = getBookmarkTabTopLimit();
-  const expandedBookmarkId = nextOptions.expandedBookmarkId || "";
-  const heightByBookmarkId = nextOptions.heightByBookmarkId && typeof nextOptions.heightByBookmarkId === "object"
-    ? nextOptions.heightByBookmarkId
-    : null;
-  const expandedHeight = Number.isFinite(nextOptions.expandedHeight)
-    ? Math.max(COLLAPSED_TAB_HEIGHT, Math.ceil(nextOptions.expandedHeight))
-    : COLLAPSED_TAB_HEIGHT;
-  const previewGapIndex = Number.isInteger(nextOptions.previewGapIndex)
-    ? clamp(nextOptions.previewGapIndex, 0, Array.isArray(bookmarks) ? bookmarks.length : 0)
-    : -1;
-  const previewGapHeight = Number.isFinite(nextOptions.previewGapHeight)
-    ? Math.max(0, Math.ceil(nextOptions.previewGapHeight))
-    : 0;
-  const sorted = bookmarks.map(function (bookmark) {
-    return {
-      bookmark: bookmark
-    };
-  });
-
-  const positioned = sorted.map(function (entry) {
-    const measuredHeight = heightByBookmarkId ? heightByBookmarkId[entry.bookmark.id] : NaN;
-    const height = Number.isFinite(measuredHeight)
-      ? Math.max(COLLAPSED_TAB_HEIGHT, Math.ceil(measuredHeight))
-      : entry.bookmark.id === expandedBookmarkId
-        ? expandedHeight
-        : COLLAPSED_TAB_HEIGHT;
-    return {
-      bookmark: entry.bookmark,
-      height: height,
-      top: topLimit
-    };
-  });
-  let cursorTop = topLimit;
-  positioned.forEach(function (entry, index) {
-    if (previewGapIndex === index) {
-      cursorTop += previewGapHeight;
-    }
-    entry.top = cursorTop;
-    cursorTop += entry.height + TAB_STACK_GAP;
-  });
-
-  return positioned.map(function (entry) {
-    return {
-      bookmark: entry.bookmark,
-      top: Math.round(entry.top),
-      height: Math.round(entry.height)
-    };
+  return computeTabPositionsBase(bookmarks, options, {
+    topLimit: getBookmarkTabTopLimit(),
+    collapsedHeight: COLLAPSED_TAB_HEIGHT,
+    tabStackGap: TAB_STACK_GAP,
+    clamp: clamp,
   });
 }
 
@@ -2463,7 +2657,9 @@ export function syncRenderedBookmarkRail(options) {
   const nextOptions = options || {};
   const isLightweight = Boolean(nextOptions.lightweight);
 
-  const tabs = Array.from(state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]"));
+  const tabs = Array.from(
+    state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]"),
+  );
   if (!tabs.length) {
     if (!state.currentBookmarks.length) {
       resetExpandedBookmarkState();
@@ -2490,16 +2686,46 @@ export function syncRenderedBookmarkRail(options) {
     }
   });
 
-  state.hoveredBookmarkId = sanitizeBookmarkInteractionId(state.hoveredBookmarkId, knownBookmarkIds);
-  state.focusedBookmarkId = sanitizeBookmarkInteractionId(state.focusedBookmarkId, knownBookmarkIds);
-  state.createPopupPreservedExpandedBookmarkId = sanitizeBookmarkInteractionId(state.createPopupPreservedExpandedBookmarkId, knownBookmarkIds);
-  state.pinnedBookmarkIds = sanitizeBookmarkInteractionIds(state.pinnedBookmarkIds, knownBookmarkIds);
-  state.expandedPinnedBookmarkIds = sanitizeBookmarkInteractionIds(state.expandedPinnedBookmarkIds, knownBookmarkIds);
-  state.expandedPopupContentBookmarkIds = sanitizeBookmarkInteractionIds(state.expandedPopupContentBookmarkIds, knownBookmarkIds);
-  state.manualOrderBookmarkIds = normalizeManualOrderBookmarkIds(state.currentBookmarks, state.manualOrderBookmarkIds);
-  state.colorPickerLockedBookmarkId = sanitizeBookmarkInteractionId(state.colorPickerLockedBookmarkId, knownBookmarkIds);
-  state.editLockedBookmarkId = sanitizeBookmarkInteractionId(state.editLockedBookmarkId, knownBookmarkIds);
-  state.resizeLockedExpandedBookmarkId = sanitizeBookmarkInteractionId(state.resizeLockedExpandedBookmarkId, knownBookmarkIds);
+  state.hoveredBookmarkId = sanitizeBookmarkInteractionId(
+    state.hoveredBookmarkId,
+    knownBookmarkIds,
+  );
+  state.focusedBookmarkId = sanitizeBookmarkInteractionId(
+    state.focusedBookmarkId,
+    knownBookmarkIds,
+  );
+  state.createPopupPreservedExpandedBookmarkId = sanitizeBookmarkInteractionId(
+    state.createPopupPreservedExpandedBookmarkId,
+    knownBookmarkIds,
+  );
+  state.pinnedBookmarkIds = sanitizeBookmarkInteractionIds(
+    state.pinnedBookmarkIds,
+    knownBookmarkIds,
+  );
+  state.expandedPinnedBookmarkIds = sanitizeBookmarkInteractionIds(
+    state.expandedPinnedBookmarkIds,
+    knownBookmarkIds,
+  );
+  state.expandedPopupContentBookmarkIds = sanitizeBookmarkInteractionIds(
+    state.expandedPopupContentBookmarkIds,
+    knownBookmarkIds,
+  );
+  state.manualOrderBookmarkIds = normalizeManualOrderBookmarkIds(
+    state.currentBookmarks,
+    state.manualOrderBookmarkIds,
+  );
+  state.colorPickerLockedBookmarkId = sanitizeBookmarkInteractionId(
+    state.colorPickerLockedBookmarkId,
+    knownBookmarkIds,
+  );
+  state.editLockedBookmarkId = sanitizeBookmarkInteractionId(
+    state.editLockedBookmarkId,
+    knownBookmarkIds,
+  );
+  state.resizeLockedExpandedBookmarkId = sanitizeBookmarkInteractionId(
+    state.resizeLockedExpandedBookmarkId,
+    knownBookmarkIds,
+  );
   state.expandedBookmarkId = getExpandedBookmarkId();
 
   const bookmarkById = {};
@@ -2520,15 +2746,23 @@ export function syncRenderedBookmarkRail(options) {
       return;
     }
 
-    const layout = measureRenderedTabLayout(tab, { lightweight: isLightweight });
+    const layout = measureRenderedTabLayout(tab, {
+      lightweight: isLightweight,
+    });
     heightByBookmarkId[bookmarkId] = layout.totalHeight;
-    tab.style.setProperty("--cgptbm-surface-height", layout.surfaceHeight + "px");
+    tab.style.setProperty(
+      "--cgptbm-surface-height",
+      layout.surfaceHeight + "px",
+    );
   });
 
-  const positionedBookmarks = computeTabPositions(getFilteredCurrentBookmarks(), {
-    expandedBookmarkId: state.expandedBookmarkId,
-    heightByBookmarkId: heightByBookmarkId
-  });
+  const positionedBookmarks = computeTabPositions(
+    getFilteredCurrentBookmarks(),
+    {
+      expandedBookmarkId: state.expandedBookmarkId,
+      heightByBookmarkId: heightByBookmarkId,
+    },
+  );
 
   positionedBookmarks.forEach(function (entry, index) {
     const tab = tabById[entry.bookmark.id];
@@ -2561,7 +2795,7 @@ function measureRenderedTabLayout(tab, options) {
     return {
       surfaceHeight: COLLAPSED_TAB_HEIGHT,
       popupHeight: 0,
-      totalHeight: COLLAPSED_TAB_HEIGHT
+      totalHeight: COLLAPSED_TAB_HEIGHT,
     };
   }
 
@@ -2579,12 +2813,13 @@ function measureRenderedTabLayout(tab, options) {
       popupHeight: popupHeight,
       totalHeight: Math.max(
         COLLAPSED_TAB_HEIGHT,
-        surfaceHeight + (
-          popupHeight
-            ? TAB_POPUP_OFFSET + popupHeight + Math.max(0, TAB_POPUP_CLEARANCE - TAB_STACK_GAP)
-            : 0
-        )
-      )
+        surfaceHeight +
+          (popupHeight
+            ? TAB_POPUP_OFFSET +
+              popupHeight +
+              Math.max(0, TAB_POPUP_CLEARANCE - TAB_STACK_GAP)
+            : 0),
+      ),
     };
   }
 
@@ -2594,18 +2829,19 @@ function measureRenderedTabLayout(tab, options) {
       popupHeight: popupHeight,
       totalHeight: Math.max(
         COLLAPSED_TAB_HEIGHT,
-        COLLAPSED_TAB_HEIGHT + (
-          popupHeight
-            ? TAB_POPUP_OFFSET + popupHeight + Math.max(0, TAB_POPUP_CLEARANCE - TAB_STACK_GAP)
-            : 0
-        )
-      )
+        COLLAPSED_TAB_HEIGHT +
+          (popupHeight
+            ? TAB_POPUP_OFFSET +
+              popupHeight +
+              Math.max(0, TAB_POPUP_CLEARANCE - TAB_STACK_GAP)
+            : 0),
+      ),
     };
   }
 
   const buttonHeight = Math.max(
     button ? Math.ceil(button.scrollHeight) : 0,
-    content ? Math.ceil(content.scrollHeight) : 0
+    content ? Math.ceil(content.scrollHeight) : 0,
   );
   const actionsHeight = actionGroups.reduce(function (maxHeight, actions) {
     if (!actions || window.getComputedStyle(actions).display === "none") {
@@ -2616,7 +2852,7 @@ function measureRenderedTabLayout(tab, options) {
   const headerHeight = Math.max(
     COLLAPSED_TAB_HEIGHT,
     buttonHeight,
-    actionsHeight
+    actionsHeight,
   );
 
   return {
@@ -2624,12 +2860,13 @@ function measureRenderedTabLayout(tab, options) {
     popupHeight: popupHeight,
     totalHeight: Math.max(
       COLLAPSED_TAB_HEIGHT,
-      Math.ceil(headerHeight) + (
-        popupHeight
-          ? TAB_POPUP_OFFSET + popupHeight + Math.max(0, TAB_POPUP_CLEARANCE - TAB_STACK_GAP)
-          : 0
-      )
-    )
+      Math.ceil(headerHeight) +
+        (popupHeight
+          ? TAB_POPUP_OFFSET +
+            popupHeight +
+            Math.max(0, TAB_POPUP_CLEARANCE - TAB_STACK_GAP)
+          : 0),
+    ),
   };
 }
 
@@ -2642,7 +2879,9 @@ export function getOrderedBookmarkTabs() {
     return [];
   }
 
-  return Array.from(state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]"));
+  return Array.from(
+    state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]"),
+  );
 }
 
 function syncRenderedBookmarkTabDomOrder(bookmarks) {
@@ -2706,16 +2945,23 @@ function insertRenderedBookmarkTabAtDisplayIndex(tab, bookmarks, insertIndex) {
   });
 
   const boundedInsertIndex = clamp(
-    Number.isInteger(insertIndex) ? insertIndex : orderedBookmarks.findIndex(function (bookmark) {
-      return bookmark && bookmark.id === bookmarkId;
-    }),
+    Number.isInteger(insertIndex)
+      ? insertIndex
+      : orderedBookmarks.findIndex(function (bookmark) {
+          return bookmark && bookmark.id === bookmarkId;
+        }),
     0,
-    orderedBookmarks.length
+    orderedBookmarks.length,
   );
 
-  for (let index = boundedInsertIndex + 1; index < orderedBookmarks.length; index += 1) {
+  for (
+    let index = boundedInsertIndex + 1;
+    index < orderedBookmarks.length;
+    index += 1
+  ) {
     const nextBookmark = orderedBookmarks[index];
-    const nextBookmarkId = nextBookmark && nextBookmark.id ? nextBookmark.id : "";
+    const nextBookmarkId =
+      nextBookmark && nextBookmark.id ? nextBookmark.id : "";
     if (!nextBookmarkId || nextBookmarkId === bookmarkId) {
       continue;
     }
@@ -2768,7 +3014,8 @@ export function syncRenderedBookmarkTabContent(tab, bookmark) {
     return;
   }
 
-  const accent = TAB_COLORS[normalizeColorIndex(bookmark.colorIndex) % TAB_COLORS.length];
+  const accent =
+    TAB_COLORS[normalizeColorIndex(bookmark.colorIndex) % TAB_COLORS.length];
   const labelText = bookmark.label || "Bookmark";
   const button = tab.querySelector(".cgptbm-tab__button");
   const label = tab.querySelector(".cgptbm-tab__label");
@@ -2785,10 +3032,12 @@ export function syncRenderedBookmarkTabContent(tab, bookmark) {
   }
 
   syncTabPopupElement(tab, {
-    popupText: isBookmarkPopupPinned(bookmark.id) ? getBookmarkPopupText(bookmark) : "",
+    popupText: isBookmarkPopupPinned(bookmark.id)
+      ? getBookmarkPopupText(bookmark)
+      : "",
     popupBookmarkId: bookmark.id,
     popupTitle: labelText,
-    label: labelText
+    label: labelText,
   });
 }
 
@@ -2797,7 +3046,10 @@ function getRenderedTabHeight(tab) {
     return COLLAPSED_TAB_HEIGHT;
   }
 
-  return Math.max(COLLAPSED_TAB_HEIGHT, Math.ceil(tab.getBoundingClientRect().height || 0));
+  return Math.max(
+    COLLAPSED_TAB_HEIGHT,
+    Math.ceil(tab.getBoundingClientRect().height || 0),
+  );
 }
 
 function getRenderedSurfaceHeight(tab) {
@@ -2806,7 +3058,10 @@ function getRenderedSurfaceHeight(tab) {
   }
 
   const surface = tab.querySelector(".cgptbm-tab__surface");
-  return Math.max(COLLAPSED_TAB_HEIGHT, Math.ceil(surface ? surface.getBoundingClientRect().height || 0 : 0));
+  return Math.max(
+    COLLAPSED_TAB_HEIGHT,
+    Math.ceil(surface ? surface.getBoundingClientRect().height || 0 : 0),
+  );
 }
 
 function getRenderedPopupBottom(tab) {
@@ -2823,9 +3078,9 @@ function getRenderedPopupBottom(tab) {
     COLLAPSED_TAB_HEIGHT,
     Math.ceil(
       (popup.offsetTop || 0) +
-      (popup.offsetHeight || 0) +
-      Math.max(0, TAB_POPUP_CLEARANCE - TAB_STACK_GAP)
-    )
+        (popup.offsetHeight || 0) +
+        Math.max(0, TAB_POPUP_CLEARANCE - TAB_STACK_GAP),
+    ),
   );
 }
 
@@ -2834,9 +3089,13 @@ function applyMeasuredTabLayout(tab, top, layout) {
     return;
   }
 
-  tab.style.setProperty("--cgptbm-surface-height", Math.max(COLLAPSED_TAB_HEIGHT, Math.ceil(layout.surfaceHeight)) + "px");
+  tab.style.setProperty(
+    "--cgptbm-surface-height",
+    Math.max(COLLAPSED_TAB_HEIGHT, Math.ceil(layout.surfaceHeight)) + "px",
+  );
   tab.style.top = Math.round(top) + "px";
-  tab.style.height = Math.max(COLLAPSED_TAB_HEIGHT, Math.ceil(layout.totalHeight)) + "px";
+  tab.style.height =
+    Math.max(COLLAPSED_TAB_HEIGHT, Math.ceil(layout.totalHeight)) + "px";
 }
 
 export function applyPopupResizeLocalLayout(bookmarkId) {
@@ -2864,10 +3123,17 @@ export function applyPopupResizeLocalLayout(bookmarkId) {
   const anchorSurfaceHeight = getRenderedSurfaceHeight(anchorTab);
   const anchorTotalHeight = getRenderedPopupBottom(anchorTab);
 
-  anchorTab.style.setProperty("--cgptbm-surface-height", Math.max(COLLAPSED_TAB_HEIGHT, anchorSurfaceHeight) + "px");
-  anchorTab.style.height = Math.max(COLLAPSED_TAB_HEIGHT, anchorTotalHeight) + "px";
+  anchorTab.style.setProperty(
+    "--cgptbm-surface-height",
+    Math.max(COLLAPSED_TAB_HEIGHT, anchorSurfaceHeight) + "px",
+  );
+  anchorTab.style.height =
+    Math.max(COLLAPSED_TAB_HEIGHT, anchorTotalHeight) + "px";
 
-  let cursorTop = nextAnchorTop + Math.max(COLLAPSED_TAB_HEIGHT, anchorTotalHeight) + TAB_STACK_GAP;
+  let cursorTop =
+    nextAnchorTop +
+    Math.max(COLLAPSED_TAB_HEIGHT, anchorTotalHeight) +
+    TAB_STACK_GAP;
   for (let index = anchorIndex + 1; index < tabs.length; index += 1) {
     const tab = tabs[index];
     const currentHeight = getRenderedTabHeight(tab);
@@ -2883,8 +3149,15 @@ export function syncRailViewportOverflow() {
     return;
   }
 
-  const railNodes = Array.from(state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id], .cgptbm-tab--empty"));
-  const viewportHeight = Math.max(1, state.railViewport.clientHeight || window.innerHeight);
+  const railNodes = Array.from(
+    state.layer.querySelectorAll(
+      ".cgptbm-tab[data-bookmark-id], .cgptbm-tab--empty",
+    ),
+  );
+  const viewportHeight = Math.max(
+    1,
+    state.railViewport.clientHeight || window.innerHeight,
+  );
   const contentBottom = railNodes.reduce(function (maxBottom, node) {
     const top = Number.parseFloat(node.style.top);
     const height = Number.parseFloat(node.style.height);
@@ -2894,10 +3167,16 @@ export function syncRailViewportOverflow() {
     return Math.max(maxBottom, top + height);
   }, getBookmarkTabTopLimit());
 
-  const nextLayerHeight = Math.max(viewportHeight, Math.ceil(contentBottom + TAB_STACK_GAP + RAIL_BOTTOM_PADDING));
+  const nextLayerHeight = Math.max(
+    viewportHeight,
+    Math.ceil(contentBottom + TAB_STACK_GAP + RAIL_BOTTOM_PADDING),
+  );
   state.railScrollSpacer.style.height = nextLayerHeight + "px";
 
-  const maxScrollTop = Math.max(0, state.railViewport.scrollHeight - state.railViewport.clientHeight);
+  const maxScrollTop = Math.max(
+    0,
+    state.railViewport.scrollHeight - state.railViewport.clientHeight,
+  );
   if (state.railViewport.scrollTop > maxScrollTop) {
     state.railViewport.scrollTop = maxScrollTop;
   }
@@ -2918,7 +3197,10 @@ export function syncRailOverlayScroll() {
     return;
   }
 
-  state.layer.style.setProperty("--cgptbm-rail-scroll-top", Math.round(state.railViewport.scrollTop) + "px");
+  state.layer.style.setProperty(
+    "--cgptbm-rail-scroll-top",
+    Math.round(state.railViewport.scrollTop) + "px",
+  );
   syncRailScrollbar();
 }
 
@@ -2943,7 +3225,11 @@ export function handleRailViewportWheel(event) {
   }
 
   const target = event.target instanceof Element ? event.target : null;
-  if (target && (target.closest(".cgptbm-tab__popup-body") || target.closest(".cgptbm-popup"))) {
+  if (
+    target &&
+    (target.closest(".cgptbm-tab__popup-body") ||
+      target.closest(".cgptbm-popup"))
+  ) {
     return;
   }
 
@@ -2955,7 +3241,10 @@ export function handleRailViewportWheel(event) {
     return;
   }
 
-  const maxScrollTop = Math.max(0, state.railViewport.scrollHeight - state.railViewport.clientHeight);
+  const maxScrollTop = Math.max(
+    0,
+    state.railViewport.scrollHeight - state.railViewport.clientHeight,
+  );
   if (maxScrollTop <= 1) {
     state.railViewport.scrollTop = 0;
     syncRailScrollbar();
@@ -2963,20 +3252,31 @@ export function handleRailViewportWheel(event) {
     return;
   }
 
-  state.railViewport.scrollTop = clamp(state.railViewport.scrollTop + deltaY, 0, maxScrollTop);
+  state.railViewport.scrollTop = clamp(
+    state.railViewport.scrollTop + deltaY,
+    0,
+    maxScrollTop,
+  );
   syncRailScrollbar();
   syncRailOverlayScroll();
 }
 
 function syncRailScrollbar() {
-  if (!state.railViewport || !state.railScrollbarTrack || !state.railScrollbarThumb) {
+  if (
+    !state.railViewport ||
+    !state.railScrollbarTrack ||
+    !state.railScrollbarThumb
+  ) {
     return;
   }
 
   const track = state.railScrollbarTrack;
   const thumb = state.railScrollbarThumb;
   const container = state.railViewport;
-  const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+  const maxScrollTop = Math.max(
+    0,
+    container.scrollHeight - container.clientHeight,
+  );
   const trackHeight = Math.max(0, track.clientHeight);
 
   if (maxScrollTop <= 1 || trackHeight <= 0) {
@@ -2986,9 +3286,12 @@ function syncRailScrollbar() {
   }
 
   const thumbHeight = clamp(
-    Math.round((container.clientHeight / Math.max(container.scrollHeight, 1)) * trackHeight),
+    Math.round(
+      (container.clientHeight / Math.max(container.scrollHeight, 1)) *
+        trackHeight,
+    ),
     RAIL_SCROLLBAR_MIN_THUMB_HEIGHT,
-    trackHeight
+    trackHeight,
   );
   const travel = Math.max(0, trackHeight - thumbHeight);
   const ratio = clamp(container.scrollTop / maxScrollTop, 0, 1);
@@ -2999,7 +3302,11 @@ function syncRailScrollbar() {
 }
 
 function handleRailScrollbarTrackPointerDown(event) {
-  if (!state.railViewport || !state.railScrollbarTrack || !state.railScrollbarThumb) {
+  if (
+    !state.railViewport ||
+    !state.railScrollbarTrack ||
+    !state.railScrollbarThumb
+  ) {
     return;
   }
 
@@ -3011,9 +3318,19 @@ function handleRailScrollbarTrackPointerDown(event) {
   event.stopPropagation();
 
   const trackRect = state.railScrollbarTrack.getBoundingClientRect();
-  const thumbHeight = Math.max(0, state.railScrollbarThumb.getBoundingClientRect().height);
-  const nextThumbTop = clamp(event.clientY - trackRect.top - (thumbHeight / 2), 0, Math.max(0, trackRect.height - thumbHeight));
-  const maxScrollTop = Math.max(0, state.railViewport.scrollHeight - state.railViewport.clientHeight);
+  const thumbHeight = Math.max(
+    0,
+    state.railScrollbarThumb.getBoundingClientRect().height,
+  );
+  const nextThumbTop = clamp(
+    event.clientY - trackRect.top - thumbHeight / 2,
+    0,
+    Math.max(0, trackRect.height - thumbHeight),
+  );
+  const maxScrollTop = Math.max(
+    0,
+    state.railViewport.scrollHeight - state.railViewport.clientHeight,
+  );
   const travel = Math.max(1, trackRect.height - thumbHeight);
   const ratio = clamp(nextThumbTop / travel, 0, 1);
   state.railViewport.scrollTop = ratio * maxScrollTop;
@@ -3022,7 +3339,11 @@ function handleRailScrollbarTrackPointerDown(event) {
 }
 
 function handleRailScrollbarThumbPointerDown(event) {
-  if (!state.railViewport || !state.railScrollbarTrack || !state.railScrollbarThumb) {
+  if (
+    !state.railViewport ||
+    !state.railScrollbarTrack ||
+    !state.railScrollbarThumb
+  ) {
     return;
   }
 
@@ -3032,7 +3353,7 @@ function handleRailScrollbarThumbPointerDown(event) {
   state.railScrollbarDrag = {
     pointerId: event.pointerId,
     startY: event.clientY,
-    startScrollTop: state.railViewport.scrollTop
+    startScrollTop: state.railViewport.scrollTop,
   };
 
   if (typeof state.railScrollbarThumb.setPointerCapture === "function") {
@@ -3045,7 +3366,12 @@ function handleRailScrollbarThumbPointerDown(event) {
 }
 
 export function handleRailScrollbarPointerMove(event) {
-  if (!state.railScrollbarDrag || !state.railViewport || !state.railScrollbarTrack || !state.railScrollbarThumb) {
+  if (
+    !state.railScrollbarDrag ||
+    !state.railViewport ||
+    !state.railScrollbarTrack ||
+    !state.railScrollbarThumb
+  ) {
     return;
   }
 
@@ -3056,12 +3382,22 @@ export function handleRailScrollbarPointerMove(event) {
   event.preventDefault();
 
   const deltaY = event.clientY - state.railScrollbarDrag.startY;
-  const maxScrollTop = Math.max(0, state.railViewport.scrollHeight - state.railViewport.clientHeight);
+  const maxScrollTop = Math.max(
+    0,
+    state.railViewport.scrollHeight - state.railViewport.clientHeight,
+  );
   const trackHeight = Math.max(0, state.railScrollbarTrack.clientHeight);
-  const thumbHeight = Math.max(0, state.railScrollbarThumb.getBoundingClientRect().height);
+  const thumbHeight = Math.max(
+    0,
+    state.railScrollbarThumb.getBoundingClientRect().height,
+  );
   const travel = Math.max(1, trackHeight - thumbHeight);
   const scrollDelta = (deltaY / travel) * maxScrollTop;
-  state.railViewport.scrollTop = clamp(state.railScrollbarDrag.startScrollTop + scrollDelta, 0, maxScrollTop);
+  state.railViewport.scrollTop = clamp(
+    state.railScrollbarDrag.startScrollTop + scrollDelta,
+    0,
+    maxScrollTop,
+  );
   syncRailScrollbar();
   syncRailOverlayScroll();
 }
@@ -3091,7 +3427,7 @@ function canReorderBookmarkTabs() {
     !_inlineEditBookmarkId &&
     !state.popupResizeSession &&
     Array.isArray(state.currentBookmarks) &&
-    state.currentBookmarks.length > 1
+    state.currentBookmarks.length > 1,
   );
 }
 
@@ -3152,8 +3488,14 @@ function clearBookmarkDragPreviewClasses() {
     return;
   }
 
-  Array.from(state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]")).forEach(function (tab) {
-    tab.classList.remove("is-drag-preview-adjacent", "is-drag-preview-before", "is-drag-preview-after");
+  Array.from(
+    state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]"),
+  ).forEach(function (tab) {
+    tab.classList.remove(
+      "is-drag-preview-adjacent",
+      "is-drag-preview-before",
+      "is-drag-preview-after",
+    );
   });
 }
 
@@ -3174,7 +3516,9 @@ function buildBookmarkDragHeightSnapshot() {
   }
 
   const heightByBookmarkId = {};
-  Array.from(state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]")).forEach(function (tab) {
+  Array.from(
+    state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]"),
+  ).forEach(function (tab) {
     const bookmarkId = tab.dataset.bookmarkId || "";
     if (!bookmarkId) {
       return;
@@ -3194,7 +3538,9 @@ function applyBookmarkDragPreviewLayout(session, previewState) {
 
   clearBookmarkDragPreviewClasses();
 
-  const tabs = Array.from(state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]"));
+  const tabs = Array.from(
+    state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]"),
+  );
   if (!tabs.length) {
     hideBookmarkDragIndicator();
     return;
@@ -3209,25 +3555,32 @@ function applyBookmarkDragPreviewLayout(session, previewState) {
 
     tabById[bookmarkId] = tab;
   });
-  const heightByBookmarkId = session.heightByBookmarkId && typeof session.heightByBookmarkId === "object"
-    ? session.heightByBookmarkId
-    : buildBookmarkDragHeightSnapshot();
+  const heightByBookmarkId =
+    session.heightByBookmarkId && typeof session.heightByBookmarkId === "object"
+      ? session.heightByBookmarkId
+      : buildBookmarkDragHeightSnapshot();
 
-  const visibleBookmarks = getFilteredCurrentBookmarks().filter(function (bookmark) {
-    return bookmark && bookmark.id !== session.bookmarkId;
-  });
-  const previewIndex = previewState && Number.isInteger(previewState.index)
-    ? clamp(previewState.index, 0, visibleBookmarks.length)
-    : 0;
+  const visibleBookmarks = getFilteredCurrentBookmarks().filter(
+    function (bookmark) {
+      return bookmark && bookmark.id !== session.bookmarkId;
+    },
+  );
+  const previewIndex =
+    previewState && Number.isInteger(previewState.index)
+      ? clamp(previewState.index, 0, visibleBookmarks.length)
+      : 0;
   const previewGapHeight = Math.max(
     COLLAPSED_TAB_HEIGHT,
-    Math.ceil(heightByBookmarkId[session.bookmarkId] || COLLAPSED_TAB_HEIGHT)
+    Math.ceil(heightByBookmarkId[session.bookmarkId] || COLLAPSED_TAB_HEIGHT),
   );
   const positionedBookmarks = computeTabPositions(visibleBookmarks, {
-    expandedBookmarkId: state.expandedBookmarkId === session.bookmarkId ? "" : state.expandedBookmarkId,
+    expandedBookmarkId:
+      state.expandedBookmarkId === session.bookmarkId
+        ? ""
+        : state.expandedBookmarkId,
     heightByBookmarkId: heightByBookmarkId,
     previewGapIndex: previewIndex,
-    previewGapHeight: previewGapHeight
+    previewGapHeight: previewGapHeight,
   });
 
   positionedBookmarks.forEach(function (entry, index) {
@@ -3251,9 +3604,11 @@ function applyBookmarkDragPreviewLayout(session, previewState) {
     return;
   }
 
-  let indicatorTop = getBookmarkTabTopLimit() + Math.round(previewGapHeight / 2);
+  let indicatorTop =
+    getBookmarkTabTopLimit() + Math.round(previewGapHeight / 2);
   if (previewIndex > 0 && positionedBookmarks[previewIndex - 1]) {
-    indicatorTop = positionedBookmarks[previewIndex - 1].top +
+    indicatorTop =
+      positionedBookmarks[previewIndex - 1].top +
       positionedBookmarks[previewIndex - 1].height +
       Math.round(previewGapHeight / 2);
   }
@@ -3263,7 +3618,12 @@ function applyBookmarkDragPreviewLayout(session, previewState) {
 }
 
 function handleBookmarkTabPointerDown(bookmarkId, event) {
-  if (!bookmarkId || !event || event.button !== 0 || !canReorderBookmarkTabs()) {
+  if (
+    !bookmarkId ||
+    !event ||
+    event.button !== 0 ||
+    !canReorderBookmarkTabs()
+  ) {
     return;
   }
 
@@ -3271,8 +3631,12 @@ function handleBookmarkTabPointerDown(bookmarkId, event) {
     return;
   }
 
-  const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-  const tab = handle && handle.closest ? handle.closest(".cgptbm-tab[data-bookmark-id]") : null;
+  const handle =
+    event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  const tab =
+    handle && handle.closest
+      ? handle.closest(".cgptbm-tab[data-bookmark-id]")
+      : null;
   if (!(tab instanceof HTMLElement)) {
     return;
   }
@@ -3289,7 +3653,7 @@ function handleBookmarkTabPointerDown(bookmarkId, event) {
     tab: tab,
     heightByBookmarkId: null,
     activated: false,
-    previewIndex: -1
+    previewIndex: -1,
   };
 }
 
@@ -3300,7 +3664,9 @@ function shouldIgnoreBookmarkDragStartTarget(target) {
   }
 
   return Boolean(
-    element.closest(".cgptbm-tab__action, .cgptbm-tab__delete-orb, .cgptbm-tab__delete-zone, .cgptbm-tab__edge")
+    element.closest(
+      ".cgptbm-tab__action, .cgptbm-tab__delete-orb, .cgptbm-tab__delete-zone, .cgptbm-tab__edge",
+    ),
   );
 }
 
@@ -3348,7 +3714,7 @@ export async function handleBookmarkDragPointerEnd(event) {
 
   const finalizedSession = clearBookmarkDragSession({
     suppressClick: Boolean(session.activated),
-    skipLayoutReset: true
+    skipLayoutReset: true,
   });
   if (!finalizedSession || !finalizedSession.activated) {
     return;
@@ -3402,8 +3768,13 @@ function syncBookmarkDragSessionVisual(session) {
   }
 
   const translateY = Math.round(session.currentClientY - session.startClientY);
-  session.tab.style.setProperty("--cgptbm-tab-drag-translate-y", translateY + "px");
-  session.tab.style.zIndex = String(Math.max(24, state.currentBookmarks.length + 4));
+  session.tab.style.setProperty(
+    "--cgptbm-tab-drag-translate-y",
+    translateY + "px",
+  );
+  session.tab.style.zIndex = String(
+    Math.max(24, state.currentBookmarks.length + 4),
+  );
 
   const previewState = getBookmarkDragPreviewState(session);
   session.previewIndex = previewState.index;
@@ -3413,15 +3784,17 @@ function syncBookmarkDragSessionVisual(session) {
 function getBookmarkDragPreviewState(session) {
   const topLimit = getBookmarkTabTopLimit();
   const remainingTabs = state.layer
-    ? Array.from(state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]")).filter(function (tab) {
-      return (tab.dataset.bookmarkId || "") !== session.bookmarkId;
-    })
+    ? Array.from(
+        state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]"),
+      ).filter(function (tab) {
+        return (tab.dataset.bookmarkId || "") !== session.bookmarkId;
+      })
     : [];
 
   if (!remainingTabs.length) {
     return {
       index: 0,
-      top: topLimit
+      top: topLimit,
     };
   }
 
@@ -3432,8 +3805,10 @@ function getBookmarkDragPreviewState(session) {
       const height = Number.parseFloat(tab.style.height);
       return {
         top: Number.isFinite(top) ? top : 0,
-        height: Number.isFinite(height) ? height : Math.max(COLLAPSED_TAB_HEIGHT, Math.ceil(rect.height || 0)),
-        midpoint: rect.top + (rect.height / 2)
+        height: Number.isFinite(height)
+          ? height
+          : Math.max(COLLAPSED_TAB_HEIGHT, Math.ceil(rect.height || 0)),
+        midpoint: rect.top + rect.height / 2,
       };
     })
     .sort(function (left, right) {
@@ -3441,46 +3816,66 @@ function getBookmarkDragPreviewState(session) {
     });
 
   let index = 0;
-  while (index < entries.length && session.currentClientY >= entries[index].midpoint) {
+  while (
+    index < entries.length &&
+    session.currentClientY >= entries[index].midpoint
+  ) {
     index += 1;
   }
 
   let top = topLimit;
   if (index > 0) {
-    top = entries[index - 1].top + entries[index - 1].height + Math.floor(TAB_STACK_GAP / 2);
+    top =
+      entries[index - 1].top +
+      entries[index - 1].height +
+      Math.floor(TAB_STACK_GAP / 2);
   }
 
   return {
     index: index,
-    top: Math.max(topLimit, Math.round(top))
+    top: Math.max(topLimit, Math.round(top)),
   };
 }
 
 async function commitBookmarkDragSession(session) {
-  const displayOrderedBookmarks = getDisplayOrderedBookmarks(state.currentBookmarks, state.manualOrderBookmarkIds);
+  const displayOrderedBookmarks = getDisplayOrderedBookmarks(
+    state.currentBookmarks,
+    state.manualOrderBookmarkIds,
+  );
   const currentOrderedBookmarkIds = getBookmarkIdList(displayOrderedBookmarks);
-  if (!currentOrderedBookmarkIds.length || currentOrderedBookmarkIds.indexOf(session.bookmarkId) < 0) {
+  if (
+    !currentOrderedBookmarkIds.length ||
+    currentOrderedBookmarkIds.indexOf(session.bookmarkId) < 0
+  ) {
     return;
   }
 
-  const bookmarkIdsWithoutDragged = currentOrderedBookmarkIds.filter(function (bookmarkId) {
-    return bookmarkId !== session.bookmarkId;
-  });
+  const bookmarkIdsWithoutDragged = currentOrderedBookmarkIds.filter(
+    function (bookmarkId) {
+      return bookmarkId !== session.bookmarkId;
+    },
+  );
   const nextIndex = clamp(
     Number.isInteger(session.previewIndex) ? session.previewIndex : 0,
     0,
-    bookmarkIdsWithoutDragged.length
+    bookmarkIdsWithoutDragged.length,
   );
-  const nextOrderedBookmarkIds = bookmarkIdsWithoutDragged.slice(0, nextIndex)
+  const nextOrderedBookmarkIds = bookmarkIdsWithoutDragged
+    .slice(0, nextIndex)
     .concat(session.bookmarkId, bookmarkIdsWithoutDragged.slice(nextIndex));
 
-  if (areBookmarkIdListsEqual(currentOrderedBookmarkIds, nextOrderedBookmarkIds)) {
+  if (
+    areBookmarkIdListsEqual(currentOrderedBookmarkIds, nextOrderedBookmarkIds)
+  ) {
     resetBookmarkDragPreviewLayout();
     return;
   }
 
   pushUndoBookmarkHistory(buildStateChangeEntry("drag-reorder"));
-  state.manualOrderBookmarkIds = normalizeManualOrderBookmarkIds(state.currentBookmarks, nextOrderedBookmarkIds);
+  state.manualOrderBookmarkIds = normalizeManualOrderBookmarkIds(
+    state.currentBookmarks,
+    nextOrderedBookmarkIds,
+  );
   syncRenderedBookmarkTabDomOrder(getFilteredCurrentBookmarks());
   syncRenderedBookmarkRail({ lightweight: true });
   await persistBookmarkUiState();
@@ -3495,7 +3890,8 @@ export function syncRenderedBookmarkInteractionVisuals(tabs) {
     return;
   }
 
-  const orderedTabs = Array.isArray(tabs) && tabs.length ? tabs : getOrderedBookmarkTabs();
+  const orderedTabs =
+    Array.isArray(tabs) && tabs.length ? tabs : getOrderedBookmarkTabs();
   if (!orderedTabs.length) {
     return;
   }
@@ -3529,7 +3925,10 @@ export function syncRenderedBookmarkInteractionVisuals(tabs) {
 }
 
 function setHoveredBookmark(bookmarkId) {
-  if ((state.bookmarkDragSession && state.bookmarkDragSession.activated) || isBookmarkCreateInteractionGuardActive()) {
+  if (
+    (state.bookmarkDragSession && state.bookmarkDragSession.activated) ||
+    isBookmarkCreateInteractionGuardActive()
+  ) {
     return;
   }
 
@@ -3548,7 +3947,10 @@ function setHoveredBookmark(bookmarkId) {
 }
 
 function clearHoveredBookmark(bookmarkId) {
-  if ((state.bookmarkDragSession && state.bookmarkDragSession.activated) || isBookmarkCreateInteractionGuardActive()) {
+  if (
+    (state.bookmarkDragSession && state.bookmarkDragSession.activated) ||
+    isBookmarkCreateInteractionGuardActive()
+  ) {
     return;
   }
 
@@ -3569,7 +3971,10 @@ function clearHoveredBookmark(bookmarkId) {
 }
 
 function setFocusedBookmark(bookmarkId) {
-  if ((state.bookmarkDragSession && state.bookmarkDragSession.activated) || isBookmarkCreateInteractionGuardActive()) {
+  if (
+    (state.bookmarkDragSession && state.bookmarkDragSession.activated) ||
+    isBookmarkCreateInteractionGuardActive()
+  ) {
     return;
   }
 
@@ -3588,7 +3993,10 @@ function setFocusedBookmark(bookmarkId) {
 }
 
 function clearFocusedBookmark(bookmarkId) {
-  if ((state.bookmarkDragSession && state.bookmarkDragSession.activated) || isBookmarkCreateInteractionGuardActive()) {
+  if (
+    (state.bookmarkDragSession && state.bookmarkDragSession.activated) ||
+    isBookmarkCreateInteractionGuardActive()
+  ) {
     return;
   }
 
@@ -3627,7 +4035,15 @@ export function syncExpandedBookmarkState(options) {
 }
 
 export function getExpandedBookmarkId() {
-  return state.colorPickerLockedBookmarkId || state.editLockedBookmarkId || state.resizeLockedExpandedBookmarkId || state.createPopupPreservedExpandedBookmarkId || state.focusedBookmarkId || state.hoveredBookmarkId || "";
+  return (
+    state.colorPickerLockedBookmarkId ||
+    state.editLockedBookmarkId ||
+    state.resizeLockedExpandedBookmarkId ||
+    state.createPopupPreservedExpandedBookmarkId ||
+    state.focusedBookmarkId ||
+    state.hoveredBookmarkId ||
+    ""
+  );
 }
 
 function isBookmarkSearchMatched(bookmarkId) {
@@ -3637,12 +4053,10 @@ function isBookmarkSearchMatched(bookmarkId) {
 export function isBookmarkExpanded(bookmarkId) {
   return Boolean(
     bookmarkId &&
-    (
-      bookmarkId === state.expandedBookmarkId ||
+    (bookmarkId === state.expandedBookmarkId ||
       isBookmarkPopupPinned(bookmarkId) ||
       isBookmarkExpansionPinned(bookmarkId) ||
-      isBookmarkSearchMatched(bookmarkId)
-    )
+      isBookmarkSearchMatched(bookmarkId)),
   );
 }
 
@@ -3651,10 +4065,14 @@ export function syncRenderedPinActions() {
     return;
   }
 
-  Array.from(state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]")).forEach(function (tab) {
+  Array.from(
+    state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]"),
+  ).forEach(function (tab) {
     const bookmarkId = tab.dataset.bookmarkId || "";
     const pinButton = tab.querySelector('[data-action-key="pin-toggle"]');
-    const expandPinButton = tab.querySelector('[data-action-key="expand-pin-toggle"]');
+    const expandPinButton = tab.querySelector(
+      '[data-action-key="expand-pin-toggle"]',
+    );
     const isPinned = isBookmarkPopupPinned(bookmarkId);
     const isExpansionPinned = isBookmarkExpansionPinned(bookmarkId);
     if (!pinButton) {
@@ -3662,16 +4080,28 @@ export function syncRenderedPinActions() {
     }
 
     pinButton.textContent = isPinned ? "-" : "+";
-    pinButton.title = isPinned ? "Hide saved text popup" : "Show saved text popup";
-    pinButton.setAttribute("aria-label", isPinned ? "Hide saved text popup" : "Show saved text popup");
+    pinButton.title = isPinned
+      ? "Hide saved text popup"
+      : "Show saved text popup";
+    pinButton.setAttribute(
+      "aria-label",
+      isPinned ? "Hide saved text popup" : "Show saved text popup",
+    );
     pinButton.classList.toggle("is-selected", isPinned);
     if (expandPinButton) {
       renderTabActionButtonContent(expandPinButton, {
         label: "P",
-        icon: "expand-pin"
+        icon: "expand-pin",
       });
-      expandPinButton.title = isExpansionPinned ? "Release expanded bookmark" : "Keep bookmark expanded";
-      expandPinButton.setAttribute("aria-label", isExpansionPinned ? "Release expanded bookmark" : "Keep bookmark expanded");
+      expandPinButton.title = isExpansionPinned
+        ? "Release expanded bookmark"
+        : "Keep bookmark expanded";
+      expandPinButton.setAttribute(
+        "aria-label",
+        isExpansionPinned
+          ? "Release expanded bookmark"
+          : "Keep bookmark expanded",
+      );
       expandPinButton.classList.toggle("is-selected", isExpansionPinned);
     }
   });
@@ -3681,7 +4111,7 @@ export function isPopupContentExpanded(bookmarkId) {
   return Boolean(
     bookmarkId &&
     Array.isArray(state.expandedPopupContentBookmarkIds) &&
-    state.expandedPopupContentBookmarkIds.indexOf(bookmarkId) >= 0
+    state.expandedPopupContentBookmarkIds.indexOf(bookmarkId) >= 0,
   );
 }
 
@@ -3716,35 +4146,47 @@ function syncRenderedPinnedPopups(tabById, bookmarkById) {
       tab,
       bookmark && isBookmarkPopupPinned(bookmarkId)
         ? {
-          popupText: getBookmarkPopupText(bookmark),
-          popupBookmarkId: bookmarkId,
-          popupTitle: bookmark.label || "Bookmark",
-          popupOnClose: function (event) {
-            if (event) {
-              event.preventDefault();
-              event.stopPropagation();
-            }
-            togglePinnedBookmark(bookmarkId);
+            popupText: getBookmarkPopupText(bookmark),
+            popupBookmarkId: bookmarkId,
+            popupTitle: bookmark.label || "Bookmark",
+            popupOnClose: function (event) {
+              if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+              }
+              togglePinnedBookmark(bookmarkId);
+            },
           }
-        }
-        : null
+        : null,
     );
   });
 }
 
 export function getBookmarkPopupText(bookmark) {
   const anchor = bookmark && bookmark.anchor ? bookmark.anchor : null;
-  const storedDisplayText = formatPopupDisplayText(anchor && anchor.selectionDisplayText, isCodeAnchor(anchor));
+  const storedDisplayText = formatPopupDisplayText(
+    anchor && anchor.selectionDisplayText,
+    isCodeAnchor(anchor),
+  );
   const liveSelectionText = extractResolvedSelectionText(bookmark);
-  const storedRawSelectionText = formatPopupDisplayText(anchor && anchor.selectionTextRaw, isCodeAnchor(anchor));
-  const storedSelectionText = formatPopupDisplayText(anchor && anchor.selectionText);
+  const storedRawSelectionText = formatPopupDisplayText(
+    anchor && anchor.selectionTextRaw,
+    isCodeAnchor(anchor),
+  );
+  const storedSelectionText = formatPopupDisplayText(
+    anchor && anchor.selectionText,
+  );
   const fallbackText = formatPopupDisplayText(
-    (bookmark && bookmark.snippet) ||
-    (anchor && anchor.blockTextSnippet) ||
-    ""
+    (bookmark && bookmark.snippet) || (anchor && anchor.blockTextSnippet) || "",
   );
 
-  return storedDisplayText || liveSelectionText || storedRawSelectionText || storedSelectionText || fallbackText;
+  return (
+    storedDisplayText ||
+    liveSelectionText ||
+    storedRawSelectionText ||
+    storedSelectionText ||
+    fallbackText
+  );
 }
 
 // ============================================================
@@ -3768,7 +4210,7 @@ export function extractResolvedSelectionText(bookmark) {
   const preferredMatch = resolvePreferredHighlightMatch(target, bookmark);
   if (preferredMatch && preferredMatch.match) {
     const preferredText = extractTextFromMatch(preferredMatch.match, {
-      preserveWhitespace: preferredMatch.mode === "code"
+      preserveWhitespace: preferredMatch.mode === "code",
     });
     if (preferredText) {
       return preferredText;
@@ -3787,7 +4229,10 @@ export function extractResolvedSelectionText(bookmark) {
   }
 
   const clampedStart = Math.min(startIndex, textMap.normalizedText.length);
-  const clampedEnd = Math.min(textMap.normalizedText.length, clampedStart + selectionLength);
+  const clampedEnd = Math.min(
+    textMap.normalizedText.length,
+    clampedStart + selectionLength,
+  );
   if (clampedEnd <= clampedStart) {
     return "";
   }
@@ -3795,16 +4240,35 @@ export function extractResolvedSelectionText(bookmark) {
   const selectedText = textMap.normalizedText.slice(clampedStart, clampedEnd);
   const prefixText = textMap.normalizedText.slice(0, clampedStart);
   const suffixText = textMap.normalizedText.slice(clampedEnd);
-  const prefixScore = scoreOccurrenceEdge(anchor.selectionPrefix, prefixText, true);
-  const suffixScore = scoreOccurrenceEdge(anchor.selectionSuffix, suffixText, false);
-  const contextFingerprintMatch = matchesSelectionContextFingerprint(anchor, prefixText, selectedText, suffixText);
+  const prefixScore = scoreOccurrenceEdge(
+    anchor.selectionPrefix,
+    prefixText,
+    true,
+  );
+  const suffixScore = scoreOccurrenceEdge(
+    anchor.selectionSuffix,
+    suffixText,
+    false,
+  );
+  const contextFingerprintMatch = matchesSelectionContextFingerprint(
+    anchor,
+    prefixText,
+    selectedText,
+    suffixText,
+  );
   const storedSelection = normalizeText(anchor.selectionText || "");
-  const selectionCompatible = !storedSelection ||
+  const selectionCompatible =
+    !storedSelection ||
     selectedText === storedSelection ||
     selectedText.indexOf(storedSelection) === 0 ||
     storedSelection.indexOf(selectedText) === 0;
 
-  if (!selectionCompatible && !contextFingerprintMatch && !prefixScore && !suffixScore) {
+  if (
+    !selectionCompatible &&
+    !contextFingerprintMatch &&
+    !prefixScore &&
+    !suffixScore
+  ) {
     return "";
   }
 
@@ -3840,9 +4304,23 @@ export function handlePopupResizePointerMove(event) {
   event.preventDefault();
 
   const session = state.popupResizeSession;
-  const maxWidth = Math.max(POPUP_MIN_WIDTH, Math.min(getPopupViewportMaxWidth(), session.maxWidth || getPopupViewportMaxWidth()));
-  const nextWidth = Math.round(clamp(session.startWidth - (event.clientX - session.startX), POPUP_MIN_WIDTH, maxWidth));
-  const nextHeight = getViewportClampedPopupHeight(session.startHeight + (event.clientY - session.startY));
+  const maxWidth = Math.max(
+    POPUP_MIN_WIDTH,
+    Math.min(
+      getPopupViewportMaxWidth(),
+      session.maxWidth || getPopupViewportMaxWidth(),
+    ),
+  );
+  const nextWidth = Math.round(
+    clamp(
+      session.startWidth - (event.clientX - session.startX),
+      POPUP_MIN_WIDTH,
+      maxWidth,
+    ),
+  );
+  const nextHeight = getViewportClampedPopupHeight(
+    session.startHeight + (event.clientY - session.startY),
+  );
   session.pendingWidth = nextWidth;
   session.pendingHeight = nextHeight;
   schedulePopupResizeFrame(session);
@@ -3874,7 +4352,13 @@ export function beginPopupResizeSession(bookmarkId, popup, event) {
 
   const rect = popup.getBoundingClientRect();
   const maxWidth = getPopupContentMaxWidth(popup);
-  const width = Math.round(clamp(rect.width, POPUP_MIN_WIDTH, Math.max(POPUP_MIN_WIDTH, Math.min(getPopupViewportMaxWidth(), maxWidth))));
+  const width = Math.round(
+    clamp(
+      rect.width,
+      POPUP_MIN_WIDTH,
+      Math.max(POPUP_MIN_WIDTH, Math.min(getPopupViewportMaxWidth(), maxWidth)),
+    ),
+  );
   const height = getViewportClampedPopupHeight(rect.height);
   lockResizeExpandedBookmark();
   applyPopupResizeSessionLayout(popup, width, height);
@@ -3889,7 +4373,7 @@ export function beginPopupResizeSession(bookmarkId, popup, event) {
     pendingWidth: width,
     pendingHeight: height,
     maxWidth: maxWidth,
-    frameId: 0
+    frameId: 0,
   };
 }
 
@@ -3906,7 +4390,9 @@ export function endPopupResizeSession() {
   state.popupResizeSession = null;
 
   if (state.layer) {
-    const popup = state.layer.querySelector('.cgptbm-tab__popup[data-bookmark-id="' + bookmarkId + '"]');
+    const popup = state.layer.querySelector(
+      '.cgptbm-tab__popup[data-bookmark-id="' + bookmarkId + '"]',
+    );
     if (popup) {
       popup.classList.remove("is-resizing");
     }
@@ -3920,7 +4406,9 @@ function markResizeSettlingBookmark(bookmarkId) {
     return;
   }
 
-  const tab = state.layer.querySelector('.cgptbm-tab[data-bookmark-id="' + bookmarkId + '"]');
+  const tab = state.layer.querySelector(
+    '.cgptbm-tab[data-bookmark-id="' + bookmarkId + '"]',
+  );
   if (!tab) {
     return;
   }
@@ -3941,7 +4429,9 @@ function clearResizeSettlingBookmark(skipRailSync) {
     return;
   }
 
-  const tab = state.layer.querySelector('.cgptbm-tab[data-bookmark-id="' + state.resizeSettlingBookmarkId + '"]');
+  const tab = state.layer.querySelector(
+    '.cgptbm-tab[data-bookmark-id="' + state.resizeSettlingBookmarkId + '"]',
+  );
   if (tab) {
     tab.classList.remove("is-resize-settling");
   }
@@ -3968,7 +4458,11 @@ export function releaseResizeLockedExpandedBookmarkForInteraction(bookmarkId) {
 }
 
 export function maybeReleaseResizeLockedExpandedBookmark(target, options) {
-  if (!state.resizeLockedExpandedBookmarkId || state.popupResizeSession || !state.root) {
+  if (
+    !state.resizeLockedExpandedBookmarkId ||
+    state.popupResizeSession ||
+    !state.root
+  ) {
     return false;
   }
 
@@ -3983,7 +4477,11 @@ export function maybeReleaseResizeLockedExpandedBookmark(target, options) {
 }
 
 export function getPopupLayout(bookmarkId) {
-  if (!bookmarkId || !state.popupLayoutByBookmarkId || typeof state.popupLayoutByBookmarkId !== "object") {
+  if (
+    !bookmarkId ||
+    !state.popupLayoutByBookmarkId ||
+    typeof state.popupLayoutByBookmarkId !== "object"
+  ) {
     return null;
   }
 
@@ -4001,7 +4499,11 @@ function schedulePopupResizeFrame(session) {
       return;
     }
 
-    applyPopupResizeSessionLayout(session.popup, session.pendingWidth, session.pendingHeight);
+    applyPopupResizeSessionLayout(
+      session.popup,
+      session.pendingWidth,
+      session.pendingHeight,
+    );
   });
 }
 
@@ -4015,7 +4517,11 @@ function flushPopupResizeFrame(session) {
     session.frameId = 0;
   }
 
-  applyPopupResizeSessionLayout(session.popup, session.pendingWidth, session.pendingHeight);
+  applyPopupResizeSessionLayout(
+    session.popup,
+    session.pendingWidth,
+    session.pendingHeight,
+  );
 }
 
 function applyPopupResizeSessionLayout(popup, width, height) {
@@ -4034,16 +4540,18 @@ function finalizePopupResizeLayout(bookmarkId, popup, session) {
     return;
   }
 
-  const rawWidth = session && Number.isFinite(session.pendingWidth)
-    ? session.pendingWidth
-    : popup.getBoundingClientRect().width;
-  const rawHeight = session && Number.isFinite(session.pendingHeight)
-    ? session.pendingHeight
-    : popup.getBoundingClientRect().height;
+  const rawWidth =
+    session && Number.isFinite(session.pendingWidth)
+      ? session.pendingWidth
+      : popup.getBoundingClientRect().width;
+  const rawHeight =
+    session && Number.isFinite(session.pendingHeight)
+      ? session.pendingHeight
+      : popup.getBoundingClientRect().height;
   const width = getClampedPopupWidth(rawWidth, popup);
   const height = getClampedPopupHeight(rawHeight, popup, width);
   setPopupLayout(bookmarkId, width, height, {
-    popup: popup
+    popup: popup,
   });
   applyPopupLayoutToElement(popup, bookmarkId);
 }
@@ -4059,16 +4567,24 @@ export function setPopupLayout(bookmarkId, width, height, options) {
     width: clampedWidth,
     height: nextOptions.viewportOnly
       ? getViewportClampedPopupHeight(height)
-      : getClampedPopupHeight(height, nextOptions.popup || null, clampedWidth)
+      : getClampedPopupHeight(height, nextOptions.popup || null, clampedWidth),
   };
   const currentLayout = getPopupLayout(bookmarkId);
-  if (currentLayout && currentLayout.width === nextLayout.width && currentLayout.height === nextLayout.height) {
+  if (
+    currentLayout &&
+    currentLayout.width === nextLayout.width &&
+    currentLayout.height === nextLayout.height
+  ) {
     return false;
   }
 
-  state.popupLayoutByBookmarkId = Object.assign({}, state.popupLayoutByBookmarkId, {
-    [bookmarkId]: nextLayout
-  });
+  state.popupLayoutByBookmarkId = Object.assign(
+    {},
+    state.popupLayoutByBookmarkId,
+    {
+      [bookmarkId]: nextLayout,
+    },
+  );
   return true;
 }
 
@@ -4085,11 +4601,9 @@ export function applyPopupLayoutToElement(popup, bookmarkId, options) {
   const layout = getPopupLayout(bookmarkId);
   const width = layout ? getClampedPopupWidth(layout.width, popup) : null;
   const height = layout
-    ? (
-      nextOptions.viewportOnly
-        ? getViewportClampedPopupHeight(layout.height)
-        : getClampedPopupHeight(layout.height, popup, width)
-    )
+    ? nextOptions.viewportOnly
+      ? getViewportClampedPopupHeight(layout.height)
+      : getClampedPopupHeight(layout.height, popup, width)
     : null;
   popup.dataset.bookmarkId = bookmarkId || "";
   popup.classList.toggle("has-custom-size", Boolean(layout));
@@ -4135,10 +4649,8 @@ export function syncPopupOverflowIndicator(popup) {
   const layout = getPopupLayout(bookmarkId);
   const isLargerThanMinimum = Boolean(
     layout &&
-    (
-      layout.width > POPUP_MIN_WIDTH + 1 ||
-      layout.height > POPUP_MIN_HEIGHT + 1
-    )
+    (layout.width > POPUP_MIN_WIDTH + 1 ||
+      layout.height > POPUP_MIN_HEIGHT + 1),
   );
   const showMin = isExpanded || isLargerThanMinimum;
   popup.classList.toggle("has-hidden-overflow", hasOverflow);
@@ -4170,10 +4682,12 @@ export async function handlePopupContentExpand(bookmarkId, popup, event) {
   }
 
   const expandedWidth = getPopupContentMaxWidth(popup);
-  const expandedHeight = getViewportClampedPopupHeight(getPopupContentMaxHeight(popup, expandedWidth));
+  const expandedHeight = getViewportClampedPopupHeight(
+    getPopupContentMaxHeight(popup, expandedWidth),
+  );
   setPopupContentExpanded(bookmarkId, true);
   setPopupLayout(bookmarkId, expandedWidth, expandedHeight, {
-    popup: popup
+    popup: popup,
   });
   applyPopupLayoutToElement(popup, bookmarkId);
 
@@ -4196,7 +4710,7 @@ export async function handlePopupContentMinimize(bookmarkId, popup, event) {
 
   setPopupContentExpanded(bookmarkId, false);
   setPopupLayout(bookmarkId, POPUP_MIN_WIDTH, POPUP_MIN_HEIGHT, {
-    popup: popup
+    popup: popup,
   });
   applyPopupLayoutToElement(popup, bookmarkId);
   applyPopupResizeLocalLayout(bookmarkId);
@@ -4225,7 +4739,10 @@ export function createTabElement(options) {
   tab.className = "cgptbm-tab";
   tab.style.setProperty("--cgptbm-accent", options.accent);
   tab.style.setProperty("--cgptbm-surface-height", COLLAPSED_TAB_HEIGHT + "px");
-  tab.style.setProperty("--cgptbm-collapsed-left-hover-zone-width", COLLAPSED_TAB_LEFT_HOVER_ZONE_WIDTH + "px");
+  tab.style.setProperty(
+    "--cgptbm-collapsed-left-hover-zone-width",
+    COLLAPSED_TAB_LEFT_HOVER_ZONE_WIDTH + "px",
+  );
 
   const surfaceClip = document.createElement("span");
   surfaceClip.className = "cgptbm-tab__surface-clip";
@@ -4289,15 +4806,28 @@ export function createTabElement(options) {
     });
     actionButton.addEventListener("click", function (event) {
       event.stopPropagation();
-      if (action.className === "cgptbm-tab__action--expand-pin" || action.className === "cgptbm-tab__action--pin" || action.className === "cgptbm-tab__action--edit") {
+      if (
+        action.className === "cgptbm-tab__action--expand-pin" ||
+        action.className === "cgptbm-tab__action--pin" ||
+        action.className === "cgptbm-tab__action--edit"
+      ) {
         if (action.className !== "cgptbm-tab__action--edit") {
-          actionButton.dataset.preClick = actionButton.classList.contains("is-selected") ? "pinned" : "unpinned";
+          actionButton.dataset.preClick = actionButton.classList.contains(
+            "is-selected",
+          )
+            ? "pinned"
+            : "unpinned";
         }
-        actionButton.style.boxShadow = "inset 0 2px 3px rgba(148, 163, 184, 0.5), inset 0 -1px 2px rgba(15, 23, 42, 0.15)";
+        actionButton.style.boxShadow =
+          "inset 0 2px 3px rgba(148, 163, 184, 0.5), inset 0 -1px 2px rgba(15, 23, 42, 0.15)";
       }
       action.onClick(event);
     });
-    if (action.className === "cgptbm-tab__action--expand-pin" || action.className === "cgptbm-tab__action--pin" || action.className === "cgptbm-tab__action--edit") {
+    if (
+      action.className === "cgptbm-tab__action--expand-pin" ||
+      action.className === "cgptbm-tab__action--pin" ||
+      action.className === "cgptbm-tab__action--edit"
+    ) {
       actionButton.addEventListener("mouseleave", function () {
         delete actionButton.dataset.preClick;
         actionButton.style.boxShadow = "";
@@ -4348,79 +4878,6 @@ export function createTabElement(options) {
   }
 
   return tab;
-}
-
-export function renderTabActionButtonContent(button, action) {
-  if (!(button instanceof HTMLButtonElement)) {
-    return;
-  }
-
-  const nextAction = action || {};
-  const label = typeof nextAction.label === "string" ? nextAction.label : "";
-  const icon = typeof nextAction.icon === "string" ? nextAction.icon : "";
-
-  button.textContent = "";
-  button.classList.toggle("cgptbm-tab__action--has-icon", Boolean(icon));
-
-  if (!icon) {
-    button.textContent = label;
-    return;
-  }
-
-  const iconElement = buildTabActionIcon(icon);
-  if (!iconElement) {
-    button.textContent = label;
-    button.classList.remove("cgptbm-tab__action--has-icon");
-    return;
-  }
-
-  button.appendChild(iconElement);
-}
-
-export function buildTabActionIcon(icon) {
-  const iconType = String(icon || "");
-  if (!iconType) {
-    return null;
-  }
-
-  const svg = createSvgElement("svg", {
-    viewBox: "0 0 16 16",
-    "aria-hidden": "true",
-    class: "cgptbm-tab__action-icon cgptbm-tab__action-icon--" + iconType
-  });
-
-  if (iconType === "expand-pin") {
-    // 기울어진 핀 아이콘 (몸체 + 바늘, 48→16 스케일)
-    svg.appendChild(createSvgElement("path", {
-      d: "M10.33 1L10.83 1L15 5.17Q15.27 5.93 14.5 5.67Q14.07 6.43 12.5 6L12 6.5L10.67 8.5Q11.3 11.63 9.83 12.67L3.33 6.5L3.83 5.67Q5 4.83 7.5 5.33L10 3.5Q9.8 1.7 10.33 1Z",
-      fill: "currentColor",
-      class: "cgptbm-tab__pin-body"
-    }));
-    svg.appendChild(createSvgElement("path", {
-      d: "M5.17 10L6 10.5L2.17 14.67Q0.93 15.1 1.33 13.83L5.17 10Z",
-      fill: "currentColor",
-      class: "cgptbm-tab__pin-needle"
-    }));
-    return svg;
-  }
-
-  if (iconType === "edit") {
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("fill", "none");
-    svg.setAttribute("stroke", "currentColor");
-    svg.setAttribute("stroke-width", "2");
-    svg.setAttribute("stroke-linecap", "round");
-    svg.setAttribute("stroke-linejoin", "round");
-    svg.appendChild(createSvgElement("path", {
-      d: "M 17.5 2.5 L 21.5 6.5 L 8.5 19.5 L 3 21 L 4.5 15.5 Z"
-    }));
-    svg.appendChild(createSvgElement("line", {
-      x1: "15", y1: "5", x2: "19", y2: "9"
-    }));
-    return svg;
-  }
-
-  return null;
 }
 
 export function createTabPopupElement(options) {
@@ -4477,9 +4934,13 @@ export function createTabPopupElement(options) {
   popupBody.textContent = options.popupText;
   var nqPopup = getNormalizedBookmarkSearchQuery(state.bookmarkSearchQuery);
   if (nqPopup) highlightMatchInElement(popupBody, nqPopup);
-  popupBody.addEventListener("scroll", function () {
-    syncPopupOverflowIndicator(popup);
-  }, { passive: true });
+  popupBody.addEventListener(
+    "scroll",
+    function () {
+      syncPopupOverflowIndicator(popup);
+    },
+    { passive: true },
+  );
 
   const popupResize = document.createElement("button");
   popupResize.type = "button";
@@ -4524,7 +4985,9 @@ export function syncTabPopupElement(tab, options) {
     if (newBookmarkId) {
       if (!getPopupLayout(newBookmarkId)) {
         const maxW = getPopupContentMaxWidth(popup);
-        const maxH = getViewportClampedPopupHeight(getPopupContentMaxHeight(popup, maxW));
+        const maxH = getViewportClampedPopupHeight(
+          getPopupContentMaxHeight(popup, maxW),
+        );
         setPopupLayout(newBookmarkId, maxW, maxH, { popup: popup });
         setPopupContentExpanded(newBookmarkId, true);
       }
@@ -4623,7 +5086,9 @@ export function syncRenderedActiveBookmarkState() {
     return;
   }
 
-  Array.from(state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]")).forEach(function (tab) {
+  Array.from(
+    state.layer.querySelectorAll(".cgptbm-tab[data-bookmark-id]"),
+  ).forEach(function (tab) {
     const bookmarkId = tab.dataset.bookmarkId || "";
     tab.classList.toggle("is-active", bookmarkId === state.activeBookmarkId);
   });
@@ -4666,7 +5131,8 @@ export function showAddTabSuccess() {
   window.clearTimeout(state.addTabFeedbackTimer);
   state.addTab.classList.add("is-success", "is-active");
   edge.textContent = "\u2713";
-  label.textContent = ADD_TAB_SUCCESS_LABEL;
+  label.textContent = ADD_TAB_SUCCESS_LABEL + " to rail";
+  showSaveToast("Bookmark saved to the rail");
   state.addTabFeedbackTimer = window.setTimeout(resetAddTabFeedback, 1400);
 }
 
@@ -4688,10 +5154,51 @@ export function resetAddTabFeedback() {
   state.addTabFeedbackTimer = 0;
 }
 
+function ensureSaveToast() {
+  if (!state.root) {
+    return null;
+  }
+  if (state.saveToast && state.saveToast.isConnected) {
+    return state.saveToast;
+  }
+
+  const toast = document.createElement("div");
+  toast.className = "cgptbm-save-toast";
+  toast.setAttribute("role", "status");
+  toast.setAttribute("aria-live", "polite");
+  toast.hidden = true;
+  state.root.appendChild(toast);
+  state.saveToast = toast;
+  return toast;
+}
+
+function showSaveToast(message) {
+  const toast = ensureSaveToast();
+  if (!toast) {
+    return;
+  }
+
+  toast.textContent = message;
+  toast.hidden = false;
+  toast.classList.remove("is-visible");
+  void toast.offsetWidth;
+  toast.classList.add("is-visible");
+
+  window.clearTimeout(state.saveToastTimer);
+  state.saveToastTimer = window.setTimeout(function () {
+    toast.classList.remove("is-visible");
+    toast.hidden = true;
+    state.saveToastTimer = 0;
+  }, 1800);
+}
+
 // ============================================================
 // Re-export for external consumers
 // ============================================================
 
 export { getDisplayOrderedBookmarks };
+export { getNormalizedBookmarkSearchQuery };
+export { renderTabActionButtonContent };
+export { buildTabActionIcon };
 export { handleBookmarkClick };
 export { handleBookmarkEdit };

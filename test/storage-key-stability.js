@@ -14,14 +14,17 @@ function fingerprintRawText(value) {
   let hash = 2166136261;
   for (let index = 0; index < sample.length; index += 1) {
     hash ^= sample.charCodeAt(index);
-    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    hash +=
+      (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
   }
   return rawText.length + ":" + (hash >>> 0).toString(36);
 }
 
 // ---- fingerprintText 복제 (src/text.js와 동일해야 함) ----
 function normalizeText(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function fingerprintText(value) {
@@ -31,7 +34,8 @@ function fingerprintText(value) {
   let hash = 2166136261;
   for (let index = 0; index < sample.length; index += 1) {
     hash ^= sample.charCodeAt(index);
-    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    hash +=
+      (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
   }
   return normalized.length + ":" + (hash >>> 0).toString(36);
 }
@@ -60,7 +64,7 @@ FINGERPRINT_RAW_PAIRS.forEach(function ([input, expected]) {
     passed += 1;
   } else {
     failed += 1;
-    console.error("FAIL fingerprintRawText(\"" + input + "\")");
+    console.error('FAIL fingerprintRawText("' + input + '")');
     console.error("  expected: " + expected);
     console.error("  actual:   " + actual);
   }
@@ -73,13 +77,15 @@ FINGERPRINT_TEXT_PAIRS.forEach(function ([input, expected]) {
     passed += 1;
   } else {
     failed += 1;
-    console.error("FAIL fingerprintText(\"" + input + "\")");
+    console.error('FAIL fingerprintText("' + input + '")');
     console.error("  expected: " + expected);
     console.error("  actual:   " + actual);
   }
 });
 
-console.log("\nStorage key stability: " + passed + " passed, " + failed + " failed");
+console.log(
+  "\nStorage key stability: " + passed + " passed, " + failed + " failed",
+);
 
 if (failed > 0) {
   console.error("\n⚠️  기존 사용자의 저장 데이터가 깨질 수 있습니다!");

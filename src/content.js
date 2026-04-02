@@ -8,9 +8,9 @@
 // ============================================================
 
 // --- State & Constants ---
-import { storageGet, storageSet, storageRemove } from './storage.js';
-import { logWarn } from './log.js';
-import state from './state.js';
+import { storageGet, storageSet } from "./storage.js";
+import { logWarn } from "./log.js";
+import state from "./state.js";
 import {
   ROOT_ID,
   RAIL_OPACITY_STORAGE_KEY,
@@ -26,11 +26,10 @@ import {
   RAIL_VIEWPORT_WIDTH,
   RAIL_LAYER_LEFT_BLEED,
   RAIL_LAYER_RIGHT_BLEED,
-  DEFAULT_RAIL_OPACITY,
   APP_VERSION,
   UPDATE_DISMISSED_STORAGE_KEY,
-  RELEASE_NOTES
-} from './constants.js';
+  RELEASE_NOTES,
+} from "./constants.js";
 
 // --- Store ---
 import {
@@ -48,8 +47,8 @@ import {
   normalizeRailOpacity,
   normalizeRailEnabled,
   buildSingleBucketObject,
-  setBookmarkCallbacks
-} from './bookmarks.js';
+  setBookmarkCallbacks,
+} from "./bookmarks.js";
 
 import {
   normalizePopupLayoutMap,
@@ -65,8 +64,8 @@ import {
   normalizeBookmarkUiStateMap,
   hasMeaningfulBookmarkUiStateEntry,
   setUiStateCallbacks,
-  invalidateAllBulkBackups
-} from './ui-state.js';
+  invalidateAllBulkBackups,
+} from "./ui-state.js";
 
 import {
   loadLegacyBookmarksForCurrentUrl,
@@ -75,8 +74,8 @@ import {
   migrateLegacyBookmarkUiStateToShard,
   loadLegacyPopupLayoutsForCurrentUrl,
   migrateLegacyPopupLayoutsToShard,
-  setMigrationCallbacks
-} from './migration.js';
+  setMigrationCallbacks,
+} from "./migration.js";
 
 // --- UI: Rail ---
 import {
@@ -114,8 +113,8 @@ import {
   bindTopRightUiProtectionObserver,
   scheduleTopRightUiProtectionRefresh,
   setBookmarkSearchQuery,
-  clearActiveState
-} from './rail.js';
+  clearActiveState,
+} from "./rail.js";
 
 // --- UI: Popup ---
 import {
@@ -123,8 +122,8 @@ import {
   closeSavePopup,
   closeBookmarkColorPicker,
   normalizePopupLayout,
-  setPopupCallbacks
-} from './popup.js';
+  setPopupCallbacks,
+} from "./popup.js";
 
 // --- UI: Selection ---
 import {
@@ -138,30 +137,30 @@ import {
   getSelectionClientRect,
   getSelectionElement,
   isEditableTextSelectionTarget,
-  setSelectionCallbacks
-} from './selection.js';
+  setSelectionCallbacks,
+} from "./selection.js";
 
 // --- UI: History ---
 import {
   pushUndoBookmarkHistory,
   buildBookmarkHistoryEntry,
   buildStateChangeEntry,
-  setHistoryCallbacks
-} from './history.js';
+  setHistoryCallbacks,
+} from "./history.js";
 
 // --- UI: Scroll ---
 import {
   advanceScrollProgress,
   finishHiddenScrollTransaction,
   forceHideScrollTransaction,
-  getOutputScrollBehavior
-} from './scroll.js';
+  getOutputScrollBehavior,
+} from "./scroll.js";
 
 // --- Anchor: Highlight ---
 import {
   clearHighlightState,
-  setHighlightScrollCallbacks
-} from './highlight.js';
+  setHighlightScrollCallbacks,
+} from "./highlight.js";
 
 // --- Frame Relay ---
 import {
@@ -171,20 +170,22 @@ import {
   debugFrameRelay,
   normalizeFrameRelayUrl,
   getCurrentFrameRelayKey,
-  setFrameRelayUiCallbacks
-} from './bridge.js';
+  setFrameRelayUiCallbacks,
+} from "./bridge.js";
 
 import {
   scheduleSandboxCardTriggerRender,
-  setSandboxCardUiCallbacks
-} from './sandbox-card.js';
+  setSandboxCardUiCallbacks,
+} from "./sandbox-card.js";
 
 // --- Anchor: Capture ---
-import { setCaptureSelectionCallbacks, setCaptureResolveCallbacks } from './capture.js';
+import {
+  setCaptureSelectionCallbacks,
+  setCaptureResolveCallbacks,
+} from "./capture.js";
 
 // --- Anchor: Resolve (capture 콜백 와이어링용) ---
-import { buildTargetTextMap, domPositionToRawOffset } from './resolve.js';
-
+import { buildTargetTextMap, domPositionToRawOffset } from "./resolve.js";
 
 // ============================================================
 // 콜백 와이어링 — 순환 의존 방지를 위한 콜백 주입
@@ -200,26 +201,26 @@ setFrameRelayUiCallbacks({
   hideSelectionTrigger: hideSelectionTrigger,
   computeSelectionUiPosition: computeSelectionUiPosition,
   isSelectionInsideEditableTextSurface: isSelectionInsideEditableTextSurface,
-  getSelectionClientRect: getSelectionClientRect
+  getSelectionClientRect: getSelectionClientRect,
 });
 
 // sandbox-card.js ← selection + UI 콜백
 setSandboxCardUiCallbacks({
   hideSelectionTrigger: hideSelectionTrigger,
   startBookmarkFlow: startBookmarkFlow,
-  preventFocusSteal: preventFocusSteal
+  preventFocusSteal: preventFocusSteal,
 });
 
 // capture.js ← selection 콜백
 setCaptureSelectionCallbacks({
   getSelectionElement: getSelectionElement,
-  isEditableTextSelectionTarget: isEditableTextSelectionTarget
+  isEditableTextSelectionTarget: isEditableTextSelectionTarget,
 });
 
 // capture.js ← resolve 콜백 (순환 의존 방지)
 setCaptureResolveCallbacks({
   buildTargetTextMap: buildTargetTextMap,
-  domPositionToRawOffset: domPositionToRawOffset
+  domPositionToRawOffset: domPositionToRawOffset,
 });
 
 // highlight.js ← scroll 콜백
@@ -227,7 +228,7 @@ setHighlightScrollCallbacks({
   advanceScrollProgress: advanceScrollProgress,
   finishHiddenScrollTransaction: finishHiddenScrollTransaction,
   forceHideScrollTransaction: forceHideScrollTransaction,
-  getOutputScrollBehavior: getOutputScrollBehavior
+  getOutputScrollBehavior: getOutputScrollBehavior,
 });
 
 // bookmarks.js ← UI + ui-state + migration 콜백 (22개)
@@ -235,8 +236,10 @@ setBookmarkCallbacks({
   // UI 콜백 (rail.js)
   renderBookmarks: renderBookmarks,
   applyRailOpacity: applyRailOpacity,
-  releaseResizeLockedExpandedBookmarkForInteraction: releaseResizeLockedExpandedBookmarkForInteraction,
-  refreshCurrentBookmarksViewAfterIncrementalRemove: refreshCurrentBookmarksViewAfterIncrementalRemove,
+  releaseResizeLockedExpandedBookmarkForInteraction:
+    releaseResizeLockedExpandedBookmarkForInteraction,
+  refreshCurrentBookmarksViewAfterIncrementalRemove:
+    refreshCurrentBookmarksViewAfterIncrementalRemove,
   // UI 콜백 (history.js)
   pushUndoBookmarkHistory: pushUndoBookmarkHistory,
   buildBookmarkHistoryEntry: buildBookmarkHistoryEntry,
@@ -255,10 +258,11 @@ setBookmarkCallbacks({
   // migration 콜백 (migration.js)
   loadLegacyBookmarksForCurrentUrl: loadLegacyBookmarksForCurrentUrl,
   migrateLegacyBookmarksToBookmarkShard: migrateLegacyBookmarksToBookmarkShard,
-  loadLegacyBookmarkUiStateForCurrentUrl: loadLegacyBookmarkUiStateForCurrentUrl,
+  loadLegacyBookmarkUiStateForCurrentUrl:
+    loadLegacyBookmarkUiStateForCurrentUrl,
   migrateLegacyBookmarkUiStateToShard: migrateLegacyBookmarkUiStateToShard,
   loadLegacyPopupLayoutsForCurrentUrl: loadLegacyPopupLayoutsForCurrentUrl,
-  migrateLegacyPopupLayoutsToShard: migrateLegacyPopupLayoutsToShard
+  migrateLegacyPopupLayoutsToShard: migrateLegacyPopupLayoutsToShard,
 });
 
 // migration.js ← ui-state 콜백 (4개)
@@ -266,49 +270,53 @@ setMigrationCallbacks({
   normalizeBookmarkUiStateMap: normalizeBookmarkUiStateMap,
   normalizeBookmarkUiStateEntry: normalizeBookmarkUiStateEntry,
   hasMeaningfulBookmarkUiStateEntry: hasMeaningfulBookmarkUiStateEntry,
-  normalizePopupLayoutMap: normalizePopupLayoutMap
+  normalizePopupLayoutMap: normalizePopupLayoutMap,
 });
 
 // ui-state.js ← rail + popup 콜백 (3개)
 setUiStateCallbacks({
-  releaseResizeLockedExpandedBookmarkForInteraction: releaseResizeLockedExpandedBookmarkForInteraction,
+  releaseResizeLockedExpandedBookmarkForInteraction:
+    releaseResizeLockedExpandedBookmarkForInteraction,
   syncExpandedBookmarkState: syncExpandedBookmarkState,
   syncHistoryControls: syncBookmarkHistoryControlsToCurrentRail,
   pushStateChangeEntry: function (action) {
     pushUndoBookmarkHistory(buildStateChangeEntry(action));
   },
   normalizePopupLayout: normalizePopupLayout,
-  preCollapseGuard: preCollapseGuard
+  preCollapseGuard: preCollapseGuard,
 });
 
 // popup.js ← rail + selection 콜백 (10개)
 setPopupCallbacks({
   syncExpandedBookmarkState: syncExpandedBookmarkState,
-  releaseResizeLockedExpandedBookmarkForInteraction: releaseResizeLockedExpandedBookmarkForInteraction,
-  refreshCurrentBookmarksViewAfterIncrementalUpdate: refreshCurrentBookmarksViewAfterIncrementalUpdate,
-  refreshCurrentBookmarksViewAfterIncrementalCreate: refreshCurrentBookmarksViewAfterIncrementalCreate,
+  releaseResizeLockedExpandedBookmarkForInteraction:
+    releaseResizeLockedExpandedBookmarkForInteraction,
+  refreshCurrentBookmarksViewAfterIncrementalUpdate:
+    refreshCurrentBookmarksViewAfterIncrementalUpdate,
+  refreshCurrentBookmarksViewAfterIncrementalCreate:
+    refreshCurrentBookmarksViewAfterIncrementalCreate,
   showAddTabSuccess: showAddTabSuccess,
   pulseRenderedBookmarkTab: pulseRenderedBookmarkTab,
   pulseTab: pulseTab,
   resetAddTabFeedback: resetAddTabFeedback,
   isBookmarkExpanded: isBookmarkExpanded,
-  hideSelectionTrigger: hideSelectionTrigger
+  hideSelectionTrigger: hideSelectionTrigger,
 });
 
 // selection.js ← popup 콜백 (1개)
 setSelectionCallbacks({
-  openSavePopup: openSavePopup
+  openSavePopup: openSavePopup,
 });
 
 // history.js ← rail 콜백 (5개)
 setHistoryCallbacks({
   pulseTab: pulseTab,
-  syncBookmarkHistoryControlsToCurrentRail: syncBookmarkHistoryControlsToCurrentRail,
+  syncBookmarkHistoryControlsToCurrentRail:
+    syncBookmarkHistoryControlsToCurrentRail,
   getPopupLayout: getPopupLayout,
   isPopupContentExpanded: isPopupContentExpanded,
-  setPopupContentExpanded: setPopupContentExpanded
+  setPopupContentExpanded: setPopupContentExpanded,
 });
-
 
 // ============================================================
 // 엔트리포인트 — 중복 실행 방지 + iframe 분기 + 부트스트랩
@@ -325,7 +333,7 @@ setHistoryCallbacks({
     debugFrameRelay("frame-bridge-bootstrap", {
       href: normalizeFrameRelayUrl(window.location.href),
       referrer: normalizeFrameRelayUrl(document.referrer),
-      frameRelayKey: getCurrentFrameRelayKey()
+      frameRelayKey: getCurrentFrameRelayKey(),
     });
     bindFrameRelayBridge();
     return;
@@ -358,15 +366,31 @@ setHistoryCallbacks({
   function mountUi() {
     const existingRoot = document.getElementById(ROOT_ID);
     if (existingRoot) {
-      const existingViewport = existingRoot.querySelector(".cgptbm-rail-viewport");
-      const existingScrollHitbox = existingRoot.querySelector(".cgptbm-rail-scroll-hitbox");
-      const existingLayerViewport = existingRoot.querySelector(".cgptbm-rail-layer-viewport");
-      const existingSpacer = existingRoot.querySelector(".cgptbm-rail-scroll-spacer");
-      const existingScrollbar = existingRoot.querySelector(".cgptbm-rail-scrollbar");
-      const existingScrollbarTrack = existingRoot.querySelector(".cgptbm-rail-scrollbar-track");
-      const existingScrollbarThumb = existingRoot.querySelector(".cgptbm-rail-scrollbar-thumb");
+      const existingViewport = existingRoot.querySelector(
+        ".cgptbm-rail-viewport",
+      );
+      const existingScrollHitbox = existingRoot.querySelector(
+        ".cgptbm-rail-scroll-hitbox",
+      );
+      const existingLayerViewport = existingRoot.querySelector(
+        ".cgptbm-rail-layer-viewport",
+      );
+      const existingSpacer = existingRoot.querySelector(
+        ".cgptbm-rail-scroll-spacer",
+      );
+      const existingScrollbar = existingRoot.querySelector(
+        ".cgptbm-rail-scrollbar",
+      );
+      const existingScrollbarTrack = existingRoot.querySelector(
+        ".cgptbm-rail-scrollbar-track",
+      );
+      const existingScrollbarThumb = existingRoot.querySelector(
+        ".cgptbm-rail-scrollbar-thumb",
+      );
       const existingLayer = existingRoot.querySelector(".cgptbm-layer");
-      const existingSandboxCardLayer = existingRoot.querySelector(".cgptbm-sandbox-card-layer");
+      const existingSandboxCardLayer = existingRoot.querySelector(
+        ".cgptbm-sandbox-card-layer",
+      );
       if (
         !existingViewport ||
         !existingScrollHitbox ||
@@ -380,59 +404,106 @@ setHistoryCallbacks({
       ) {
         existingRoot.remove();
       } else {
-      state.root = existingRoot;
-      state.root.style.setProperty("--cgptbm-root-right", ROOT_RIGHT_OFFSET + "px");
-      state.root.style.setProperty("--cgptbm-rail-viewport-top", RAIL_VIEWPORT_DEFAULT_TOP + "px");
-      state.root.style.setProperty("--cgptbm-rail-viewport-width", RAIL_VIEWPORT_WIDTH + "px");
-      state.root.style.setProperty("--cgptbm-rail-scroll-hitbox-width", RAIL_VIEWPORT_WIDTH + "px");
-      state.root.style.setProperty("--cgptbm-rail-layer-left-bleed", RAIL_LAYER_LEFT_BLEED + "px");
-      state.root.style.setProperty("--cgptbm-rail-overlay-right", RAIL_LAYER_RIGHT_BLEED + "px");
-      state.railViewport = existingViewport;
-      state.railScrollHitbox = existingScrollHitbox;
-      state.railLayerViewport = existingLayerViewport;
-      state.railScrollSpacer = existingSpacer;
-      state.railScrollbar = existingScrollbar;
-      state.railScrollbarTrack = existingScrollbarTrack;
-      state.railScrollbarThumb = existingScrollbarThumb;
-      if (existingLayer.parentElement !== existingLayerViewport) {
-        existingLayerViewport.appendChild(existingLayer);
-      }
-      state.layer = existingLayer;
-      const existingAddTab = state.root.querySelector(".cgptbm-tab--add");
-      if (existingAddTab) {
-        existingAddTab.remove();
-      }
-      state.addTab = null;
-      state.searchInput = state.root.querySelector(".cgptbm-history-controls__search-input");
-      state.searchClearButton = state.root.querySelector(".cgptbm-history-controls__search-clear");
-      state.searchStatus = state.root.querySelector(".cgptbm-history-controls__search-status");
-      state.selectionTrigger = state.root.querySelector(".cgptbm-selection-trigger");
-      state.sandboxCardLayer = existingSandboxCardLayer;
-      state.scrollMask = document.querySelector(".cgptbm-transition-mask");
-      state.scrollProgressFill = state.scrollMask
-        ? state.scrollMask.querySelector(".cgptbm-transition-mask__progress-fill")
-        : null;
-      applyRailOpacity();
-      state.railViewport.onscroll = syncRailOverlayScroll;
-      state.railViewport.onwheel = null;
-      state.railScrollHitbox.onwheel = handleRailViewportWheel;
-      state.railScrollbar.onwheel = handleRailViewportWheel;
-      state.layer.onwheel = handleRailViewportWheel;
-      bindRailScrollbar(existingScrollbar, existingScrollbarTrack, existingScrollbarThumb);
-      bindTopRightUiProtectionObserver();
-      scheduleTopRightUiProtectionRefresh();
-      return;
+        state.root = existingRoot;
+        state.root.style.setProperty(
+          "--cgptbm-root-right",
+          ROOT_RIGHT_OFFSET + "px",
+        );
+        state.root.style.setProperty(
+          "--cgptbm-rail-viewport-top",
+          RAIL_VIEWPORT_DEFAULT_TOP + "px",
+        );
+        state.root.style.setProperty(
+          "--cgptbm-rail-viewport-width",
+          RAIL_VIEWPORT_WIDTH + "px",
+        );
+        state.root.style.setProperty(
+          "--cgptbm-rail-scroll-hitbox-width",
+          RAIL_VIEWPORT_WIDTH + "px",
+        );
+        state.root.style.setProperty(
+          "--cgptbm-rail-layer-left-bleed",
+          RAIL_LAYER_LEFT_BLEED + "px",
+        );
+        state.root.style.setProperty(
+          "--cgptbm-rail-overlay-right",
+          RAIL_LAYER_RIGHT_BLEED + "px",
+        );
+        state.railViewport = existingViewport;
+        state.railScrollHitbox = existingScrollHitbox;
+        state.railLayerViewport = existingLayerViewport;
+        state.railScrollSpacer = existingSpacer;
+        state.railScrollbar = existingScrollbar;
+        state.railScrollbarTrack = existingScrollbarTrack;
+        state.railScrollbarThumb = existingScrollbarThumb;
+        if (existingLayer.parentElement !== existingLayerViewport) {
+          existingLayerViewport.appendChild(existingLayer);
+        }
+        state.layer = existingLayer;
+        const existingAddTab = state.root.querySelector(".cgptbm-tab--add");
+        if (existingAddTab) {
+          existingAddTab.remove();
+        }
+        state.addTab = null;
+        state.searchInput = state.root.querySelector(
+          ".cgptbm-history-controls__search-input",
+        );
+        state.searchClearButton = state.root.querySelector(
+          ".cgptbm-history-controls__search-clear",
+        );
+        state.searchStatus = state.root.querySelector(
+          ".cgptbm-history-controls__search-status",
+        );
+        state.selectionTrigger = state.root.querySelector(
+          ".cgptbm-selection-trigger",
+        );
+        state.sandboxCardLayer = existingSandboxCardLayer;
+        state.scrollMask = document.querySelector(".cgptbm-transition-mask");
+        state.scrollProgressFill = state.scrollMask
+          ? state.scrollMask.querySelector(
+              ".cgptbm-transition-mask__progress-fill",
+            )
+          : null;
+        applyRailOpacity();
+        state.railViewport.onscroll = syncRailOverlayScroll;
+        state.railViewport.onwheel = null;
+        state.railScrollHitbox.onwheel = handleRailViewportWheel;
+        state.railScrollbar.onwheel = handleRailViewportWheel;
+        state.layer.onwheel = handleRailViewportWheel;
+        bindRailScrollbar(
+          existingScrollbar,
+          existingScrollbarTrack,
+          existingScrollbarThumb,
+        );
+        bindTopRightUiProtectionObserver();
+        scheduleTopRightUiProtectionRefresh();
+        return;
       }
     }
 
     const root = document.createElement("div");
     root.id = ROOT_ID;
     root.style.setProperty("--cgptbm-root-right", ROOT_RIGHT_OFFSET + "px");
-    root.style.setProperty("--cgptbm-rail-viewport-top", RAIL_VIEWPORT_DEFAULT_TOP + "px");
-    root.style.setProperty("--cgptbm-rail-viewport-width", RAIL_VIEWPORT_WIDTH + "px");
-    root.style.setProperty("--cgptbm-rail-scroll-hitbox-width", RAIL_VIEWPORT_WIDTH + "px");
-    root.style.setProperty("--cgptbm-rail-layer-left-bleed", RAIL_LAYER_LEFT_BLEED + "px");
-    root.style.setProperty("--cgptbm-rail-overlay-right", RAIL_LAYER_RIGHT_BLEED + "px");
+    root.style.setProperty(
+      "--cgptbm-rail-viewport-top",
+      RAIL_VIEWPORT_DEFAULT_TOP + "px",
+    );
+    root.style.setProperty(
+      "--cgptbm-rail-viewport-width",
+      RAIL_VIEWPORT_WIDTH + "px",
+    );
+    root.style.setProperty(
+      "--cgptbm-rail-scroll-hitbox-width",
+      RAIL_VIEWPORT_WIDTH + "px",
+    );
+    root.style.setProperty(
+      "--cgptbm-rail-layer-left-bleed",
+      RAIL_LAYER_LEFT_BLEED + "px",
+    );
+    root.style.setProperty(
+      "--cgptbm-rail-overlay-right",
+      RAIL_LAYER_RIGHT_BLEED + "px",
+    );
 
     const railViewport = document.createElement("div");
     railViewport.className = "cgptbm-rail-viewport";
@@ -493,7 +564,7 @@ setHistoryCallbacks({
     scrollMask.innerHTML = [
       '<div class="cgptbm-transition-mask__progress" aria-hidden="true">',
       '<div class="cgptbm-transition-mask__progress-fill"></div>',
-      "</div>"
+      "</div>",
     ].join("");
     document.body.appendChild(scrollMask);
     document.body.appendChild(root);
@@ -514,7 +585,9 @@ setHistoryCallbacks({
     state.selectionTrigger = selectionTrigger;
     state.sandboxCardLayer = sandboxCardLayer;
     state.scrollMask = scrollMask;
-    state.scrollProgressFill = scrollMask.querySelector(".cgptbm-transition-mask__progress-fill");
+    state.scrollProgressFill = scrollMask.querySelector(
+      ".cgptbm-transition-mask__progress-fill",
+    );
     applyRailOpacity();
     bindRailScrollbar(railScrollbar, railScrollbarTrack, railScrollbarThumb);
     bindTopRightUiProtectionObserver();
@@ -528,11 +601,23 @@ setHistoryCallbacks({
     window.addEventListener("resize", hideSelectionTrigger);
     window.addEventListener("resize", scheduleSandboxCardTriggerRender);
     window.addEventListener("resize", scheduleTopRightUiProtectionRefresh);
-    window.addEventListener("pointermove", handleRailScrollbarPointerMove, true);
+    window.addEventListener(
+      "pointermove",
+      handleRailScrollbarPointerMove,
+      true,
+    );
     window.addEventListener("pointerup", handleRailScrollbarPointerEnd, true);
-    window.addEventListener("pointercancel", handleRailScrollbarPointerEnd, true);
+    window.addEventListener(
+      "pointercancel",
+      handleRailScrollbarPointerEnd,
+      true,
+    );
     window.addEventListener("pointerup", handleBookmarkDragPointerEnd, true);
-    window.addEventListener("pointercancel", handleBookmarkDragPointerEnd, true);
+    window.addEventListener(
+      "pointercancel",
+      handleBookmarkDragPointerEnd,
+      true,
+    );
     window.addEventListener("keydown", handleKeydown, true);
     document.addEventListener("pointermove", handleDocumentPointerMove, true);
     document.addEventListener("selectionchange", scheduleSelectionUiUpdate);
@@ -542,8 +627,15 @@ setHistoryCallbacks({
     window.addEventListener("pointercancel", handlePopupResizePointerEnd, true);
     window.addEventListener("scroll", hideSelectionTrigger, true);
     window.addEventListener("scroll", scheduleSandboxCardTriggerRender, true);
-    document.addEventListener("wheel", handleDocumentWheel, { capture: true, passive: false });
-    document.addEventListener("click", scheduleTopRightUiProtectionRefresh, true);
+    document.addEventListener("wheel", handleDocumentWheel, {
+      capture: true,
+      passive: false,
+    });
+    document.addEventListener(
+      "click",
+      scheduleTopRightUiProtectionRefresh,
+      true,
+    );
     document.addEventListener("pointerdown", handleDocumentPointerDown, true);
     document.addEventListener("focusin", handleDocumentFocusIn, true);
     window.addEventListener("message", handleFrameRelayMessage);
@@ -562,45 +654,71 @@ setHistoryCallbacks({
     }
 
     const currentUrlKey = normalizeUrlKey(state.currentUrlKey);
-    const currentShardBucketKey = getBookmarkShardBucketStorageKey(currentUrlKey);
-    const currentUiStateShardKey = getBookmarkUiStateShardStorageKey(currentUrlKey);
-    const currentPopupLayoutShardKey = getPopupLayoutShardStorageKey(currentUrlKey);
-    const changedPopupLayoutOnly = changedKeys.length > 0 && changedKeys.every(function (key) {
-      return key === currentPopupLayoutShardKey;
-    });
-    if (changedPopupLayoutOnly && (Date.now() - state.popupLayoutReloadSuppressAt) < 800) {
+    const currentShardBucketKey =
+      getBookmarkShardBucketStorageKey(currentUrlKey);
+    const currentUiStateShardKey =
+      getBookmarkUiStateShardStorageKey(currentUrlKey);
+    const currentPopupLayoutShardKey =
+      getPopupLayoutShardStorageKey(currentUrlKey);
+    const changedPopupLayoutOnly =
+      changedKeys.length > 0 &&
+      changedKeys.every(function (key) {
+        return key === currentPopupLayoutShardKey;
+      });
+    if (
+      changedPopupLayoutOnly &&
+      Date.now() - state.popupLayoutReloadSuppressAt < 800
+    ) {
       return;
     }
 
-    const changedBookmarkUiStateOnly = changedKeys.length > 0 && changedKeys.every(function (key) {
-      return key === currentUiStateShardKey;
-    });
-    if (changedBookmarkUiStateOnly && (Date.now() - state.bookmarkUiStateReloadSuppressAt) < 800) {
+    const changedBookmarkUiStateOnly =
+      changedKeys.length > 0 &&
+      changedKeys.every(function (key) {
+        return key === currentUiStateShardKey;
+      });
+    if (
+      changedBookmarkUiStateOnly &&
+      Date.now() - state.bookmarkUiStateReloadSuppressAt < 800
+    ) {
       return;
     }
 
     const changedCurrentShardBucket = Boolean(
       currentShardBucketKey &&
-      Object.prototype.hasOwnProperty.call(changes, currentShardBucketKey)
+      Object.prototype.hasOwnProperty.call(changes, currentShardBucketKey),
     );
-    const changedCurrentShardBucketPersistOnly = changedKeys.length > 0 && changedKeys.every(function (key) {
-      return key === currentShardBucketKey || key === BOOKMARK_SHARD_INDEX_STORAGE_KEY;
-    });
+    const changedCurrentShardBucketPersistOnly =
+      changedKeys.length > 0 &&
+      changedKeys.every(function (key) {
+        return (
+          key === currentShardBucketKey ||
+          key === BOOKMARK_SHARD_INDEX_STORAGE_KEY
+        );
+      });
     if (
       changedCurrentShardBucket &&
       changedCurrentShardBucketPersistOnly &&
-      (Date.now() - state.bookmarkBucketReloadSuppressAt) < 800
+      Date.now() - state.bookmarkBucketReloadSuppressAt < 800
     ) {
       return;
     }
 
-    if (Object.prototype.hasOwnProperty.call(changes, RAIL_OPACITY_STORAGE_KEY)) {
-      state.railOpacity = normalizeRailOpacity(changes[RAIL_OPACITY_STORAGE_KEY].newValue);
+    if (
+      Object.prototype.hasOwnProperty.call(changes, RAIL_OPACITY_STORAGE_KEY)
+    ) {
+      state.railOpacity = normalizeRailOpacity(
+        changes[RAIL_OPACITY_STORAGE_KEY].newValue,
+      );
       applyRailOpacity();
       syncBookmarkHistoryControlsToCurrentRail();
     }
-    if (Object.prototype.hasOwnProperty.call(changes, RAIL_ENABLED_STORAGE_KEY)) {
-      state.railEnabled = normalizeRailEnabled(changes[RAIL_ENABLED_STORAGE_KEY].newValue);
+    if (
+      Object.prototype.hasOwnProperty.call(changes, RAIL_ENABLED_STORAGE_KEY)
+    ) {
+      state.railEnabled = normalizeRailEnabled(
+        changes[RAIL_ENABLED_STORAGE_KEY].newValue,
+      );
       applyRailOpacity();
       syncBookmarkHistoryControlsToCurrentRail();
       if (state.railEnabled) {
@@ -613,23 +731,44 @@ setHistoryCallbacks({
     }
 
     let shouldRenderRail = false;
-    if (Object.prototype.hasOwnProperty.call(changes, BOOKMARK_SHARD_INDEX_STORAGE_KEY)) {
-      state.bookmarkShardIndexByUrlHash = normalizeBookmarkShardIndexMap(changes[BOOKMARK_SHARD_INDEX_STORAGE_KEY].newValue);
+    if (
+      Object.prototype.hasOwnProperty.call(
+        changes,
+        BOOKMARK_SHARD_INDEX_STORAGE_KEY,
+      )
+    ) {
+      state.bookmarkShardIndexByUrlHash = normalizeBookmarkShardIndexMap(
+        changes[BOOKMARK_SHARD_INDEX_STORAGE_KEY].newValue,
+      );
     }
 
-    if (currentPopupLayoutShardKey && Object.prototype.hasOwnProperty.call(changes, currentPopupLayoutShardKey)) {
-      state.popupLayoutByBookmarkId = normalizePopupLayoutMap(changes[currentPopupLayoutShardKey].newValue);
+    if (
+      currentPopupLayoutShardKey &&
+      Object.prototype.hasOwnProperty.call(changes, currentPopupLayoutShardKey)
+    ) {
+      state.popupLayoutByBookmarkId = normalizePopupLayoutMap(
+        changes[currentPopupLayoutShardKey].newValue,
+      );
       shouldRenderRail = true;
     }
 
-    if (currentUiStateShardKey && Object.prototype.hasOwnProperty.call(changes, currentUiStateShardKey)) {
-      state.bookmarkUiStateByUrl = buildSingleBookmarkUiStateObject(currentUrlKey, changes[currentUiStateShardKey].newValue);
+    if (
+      currentUiStateShardKey &&
+      Object.prototype.hasOwnProperty.call(changes, currentUiStateShardKey)
+    ) {
+      state.bookmarkUiStateByUrl = buildSingleBookmarkUiStateObject(
+        currentUrlKey,
+        changes[currentUiStateShardKey].newValue,
+      );
       applyCurrentBookmarkUiState();
       shouldRenderRail = true;
     }
 
     if (changedCurrentShardBucket) {
-      const nextBookmarks = normalizeBookmarkList(changes[currentShardBucketKey].newValue || [], currentUrlKey);
+      const nextBookmarks = normalizeBookmarkList(
+        changes[currentShardBucketKey].newValue || [],
+        currentUrlKey,
+      );
       state.bookmarksByUrl = currentUrlKey
         ? buildSingleBucketObject(currentUrlKey, nextBookmarks)
         : {};
@@ -638,9 +777,15 @@ setHistoryCallbacks({
     }
 
     const changedLegacyUrlBucket = changedKeys.some(looksLikeUrl);
-    const changedLegacyKnownKey = [PRIMARY_STORAGE_KEY, POPUP_LAYOUT_STORAGE_KEY, BOOKMARK_UI_STATE_STORAGE_KEY].concat(LEGACY_STORAGE_KEYS).some(function (key) {
-      return Object.prototype.hasOwnProperty.call(changes, key);
-    });
+    const changedLegacyKnownKey = [
+      PRIMARY_STORAGE_KEY,
+      POPUP_LAYOUT_STORAGE_KEY,
+      BOOKMARK_UI_STATE_STORAGE_KEY,
+    ]
+      .concat(LEGACY_STORAGE_KEYS)
+      .some(function (key) {
+        return Object.prototype.hasOwnProperty.call(changes, key);
+      });
 
     if (shouldRenderRail) {
       renderBookmarks();
@@ -651,7 +796,12 @@ setHistoryCallbacks({
       return;
     }
 
-    if (hasBookmarkShardIndexEntry(state.bookmarkShardIndexByUrlHash, currentUrlKey)) {
+    if (
+      hasBookmarkShardIndexEntry(
+        state.bookmarkShardIndexByUrlHash,
+        currentUrlKey,
+      )
+    ) {
       return;
     }
 
@@ -703,7 +853,15 @@ setHistoryCallbacks({
 
       var subtitle = document.createElement("div");
       subtitle.className = "cgptbm-update-banner__subtitle";
-      subtitle.textContent = "v" + APP_VERSION;
+      subtitle.textContent = isFirstInstall
+        ? "Your bookmark rail is ready. Start with one quick highlight."
+        : "v" + APP_VERSION;
+
+      var helper = document.createElement("div");
+      helper.className = "cgptbm-update-banner__helper";
+      helper.textContent = isFirstInstall
+        ? "Quick start: select text, click MARK, then use the right rail to jump back anytime."
+        : "What changed in this version:";
 
       var list = document.createElement("ul");
       list.className = "cgptbm-update-banner__list";
@@ -725,6 +883,7 @@ setHistoryCallbacks({
 
       banner.appendChild(title);
       banner.appendChild(subtitle);
+      banner.appendChild(helper);
       banner.appendChild(list);
       banner.appendChild(closeBtn);
 
@@ -783,7 +942,6 @@ setHistoryCallbacks({
         return;
       }
     }
-
   }
 
   // ---- hasBookmarkShardIndexEntry: 인라인 헬퍼 ----
@@ -791,5 +949,4 @@ setHistoryCallbacks({
     const urlHash = getBookmarkShardUrlHash(urlKey);
     return Boolean(urlHash && indexMap && indexMap[urlHash]);
   }
-
 })();

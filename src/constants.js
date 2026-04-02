@@ -1,3 +1,5 @@
+// @ts-check
+
 // ============================================================
 // constants.js — 모든 상수값을 한 곳에서 관리
 // ============================================================
@@ -41,12 +43,20 @@ export const MESSAGE_SELECTOR = [
   "[data-testid*='response']",
   "[role='article']",
   "[role='listitem']",
-  "article"
+  "article",
 ].join(", ");
 
 export const TAB_COLORS = [
-  "#ff7f50", "#1e90ff", "#32cd32", "#ff4d4f", "#a855f7",
-  "#ffd43b", "#00c2a8", "#ff66c4", "#6c63ff", "#b9e769"
+  "#ff7f50",
+  "#1e90ff",
+  "#32cd32",
+  "#ff4d4f",
+  "#a855f7",
+  "#ffd43b",
+  "#00c2a8",
+  "#ff66c4",
+  "#6c63ff",
+  "#b9e769",
 ];
 
 export const DEFAULT_SCOPE_ROOT_SELECTORS = ["main", "[role='main']"];
@@ -56,34 +66,69 @@ export const SITE_PROFILES = [
     id: "openai",
     hosts: ["chatgpt.com", "chat.openai.com"],
     scopeSelectors: ["main", "[role='main']"],
-    conversationPathTokens: ["c", "chat", "conversation", "conversations", "codex"],
-    conversationQueryKeys: ["conversationId", "conversation_id", "chatId", "chat_id", "threadId", "thread_id", "c"],
+    conversationPathTokens: [
+      "c",
+      "chat",
+      "conversation",
+      "conversations",
+      "codex",
+    ],
+    conversationQueryKeys: [
+      "conversationId",
+      "conversation_id",
+      "chatId",
+      "chat_id",
+      "threadId",
+      "thread_id",
+      "c",
+    ],
     messageIdAttr: "data-message-id",
-    userTextSelector: ""
+    userTextSelector: "",
   },
   {
     id: "claude",
     hosts: ["claude.ai"],
     scopeSelectors: ["main", "[role='main']"],
-    conversationPathTokens: ["chat", "conversation", "conversations", "project"],
-    conversationQueryKeys: ["conversationId", "conversation_id", "chatId", "chat_id", "threadId", "thread_id", "c"],
+    conversationPathTokens: [
+      "chat",
+      "conversation",
+      "conversations",
+      "project",
+    ],
+    conversationQueryKeys: [
+      "conversationId",
+      "conversation_id",
+      "chatId",
+      "chat_id",
+      "threadId",
+      "thread_id",
+      "c",
+    ],
     messageIdAttr: "",
-    userTextSelector: "p, div[class*='user'], div[class*='human']"
+    userTextSelector: "p, div[class*='user'], div[class*='human']",
   },
   {
     id: "gemini",
     hosts: ["gemini.google.com"],
     scopeSelectors: ["main", "[role='main']"],
     conversationPathTokens: ["app", "chat", "conversation", "conversations"],
-    conversationQueryKeys: ["conversationId", "conversation_id", "chatId", "chat_id", "threadId", "thread_id", "c"],
+    conversationQueryKeys: [
+      "conversationId",
+      "conversation_id",
+      "chatId",
+      "chat_id",
+      "threadId",
+      "thread_id",
+      "c",
+    ],
     messageIdAttr: "",
-    userTextSelector: "p, div[data-text-content], div[class*='query']"
-  }
+    userTextSelector: "p, div[data-text-content], div[class*='query']",
+  },
 ];
 
 export const ALLOWED_FRAME_ORIGINS = [
   "https://chatgpt.com",
-  "https://chat.openai.com"
+  "https://chat.openai.com",
   // Claude/Gemini 지원 재개 시 복원:
   // "https://claude.ai",
   // "https://gemini.google.com",
@@ -133,7 +178,7 @@ export const SELECTION_UI_BLOCKER_SELECTOR = [
   "[data-radix-popper-content-wrapper]",
   "[data-radix-dropdown-menu-content]",
   "[data-radix-popover-content]",
-  "[aria-live='polite'].fixed"
+  "[aria-live='polite'].fixed",
 ].join(", ");
 
 // ---- Limits ----
@@ -146,8 +191,28 @@ export const MIN_RAIL_OPACITY = 0.1;
 export const MAX_RAIL_OPACITY = 1;
 
 // ---- URL / Conversation ID ----
-export const DEFAULT_CONVERSATION_PATH_TOKENS = ["c", "chat", "chats", "conversation", "conversations", "thread", "threads", "app", "codex"];
-export const DEFAULT_CONVERSATION_QUERY_KEYS = ["conversationId", "conversation_id", "chatId", "chat_id", "threadId", "thread_id", "sessionId", "session_id", "c"];
+export const DEFAULT_CONVERSATION_PATH_TOKENS = [
+  "c",
+  "chat",
+  "chats",
+  "conversation",
+  "conversations",
+  "thread",
+  "threads",
+  "app",
+  "codex",
+];
+export const DEFAULT_CONVERSATION_QUERY_KEYS = [
+  "conversationId",
+  "conversation_id",
+  "chatId",
+  "chat_id",
+  "threadId",
+  "thread_id",
+  "sessionId",
+  "session_id",
+  "c",
+];
 export const RESERVED_CONVERSATION_SEGMENTS = [
   "new",
   "new-chat",
@@ -168,7 +233,7 @@ export const RESERVED_CONVERSATION_SEGMENTS = [
   "login",
   "auth",
   "oauth",
-  "share"
+  "share",
 ];
 
 // ---- Frame relay message types ----
@@ -200,6 +265,6 @@ export const RELEASE_NOTES = {
     "Color-coded tabs on right-side rail",
     "Drag-and-drop reorder, pin, and expand",
     "Current-page bookmark search",
-    "Undo/redo support"
-  ]
+    "Undo/redo support",
+  ],
 };

@@ -1,3 +1,5 @@
+// @ts-check
+
 // ============================================================
 // state.js — 앱 전체의 상태를 관리하는 중앙 저장소
 // ============================================================
@@ -7,7 +9,7 @@
 // 향후 개선: getter/setter를 추가하여 상태 변경을 추적 가능하게 만들 수 있습니다.
 //   예) setState('railEnabled', false) → 콘솔에 변경 로그 출력
 
-import { DEFAULT_RAIL_OPACITY } from './constants.js';
+import { DEFAULT_RAIL_OPACITY } from "./constants.js";
 
 const state = {
   // ---- Bookmark data ----
@@ -35,6 +37,7 @@ const state = {
   searchStatus: null,
   layer: null,
   addTab: null,
+  saveToast: null,
   selectionTrigger: null,
   sandboxCardLayer: null,
   emptyTab: null,
@@ -79,6 +82,7 @@ const state = {
   scrollMaskRevealTimer: 0,
   resizeSettleTimer: 0,
   addTabFeedbackTimer: 0,
+  saveToastTimer: 0,
 
   // ---- Scroll state ----
   hiddenScrollActive: false,
@@ -109,6 +113,7 @@ const state = {
   railEnabled: true,
   topRightUiObserver: null,
   topRightUiRefreshFrame: 0,
+  _updateBannerDismissed: "",
 
   // ---- 2-pass navigation ----
   navigateSessionId: 0,
@@ -122,7 +127,7 @@ const state = {
   lastSandboxCardKey: "",
   lastSandboxCardInteractedAt: 0,
   sandboxCardHighlightPulseTimer: 0,
-  sandboxCardRenderFrame: 0
+  sandboxCardRenderFrame: 0,
 };
 
 export default state;

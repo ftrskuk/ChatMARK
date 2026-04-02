@@ -1,3 +1,5 @@
+// @ts-check
+
 // ============================================================
 // utils/text.js — 텍스트 처리 유틸리티 (순수 함수들)
 // ============================================================
@@ -9,7 +11,9 @@
  * "  hello   world  " → "hello world"
  */
 export function normalizeText(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**
@@ -64,7 +68,8 @@ export function fingerprintText(value) {
   let hash = 2166136261;
   for (let index = 0; index < sample.length; index += 1) {
     hash ^= sample.charCodeAt(index);
-    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    hash +=
+      (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
   }
 
   return normalized.length + ":" + (hash >>> 0).toString(36);
@@ -87,7 +92,8 @@ export function fingerprintRawText(value) {
   let hash = 2166136261;
   for (let index = 0; index < sample.length; index += 1) {
     hash ^= sample.charCodeAt(index);
-    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    hash +=
+      (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
   }
 
   return rawText.length + ":" + (hash >>> 0).toString(36);
