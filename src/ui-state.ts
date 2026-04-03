@@ -4,29 +4,66 @@
 // 비유: "인테리어 설정 저장". 어떤 북마크가 펼쳐져 있는지, 핀되어 있는지 등
 //       UI 레이아웃 상태를 storage에 저장/복원합니다.
 
-import state from './state.js';
-import { storageGet, storageSet, storageRemove } from './storage.js';
+import state from "./state.js";
+import { storageSet, storageRemove } from "./storage.js";
 import {
   normalizeUrlKey,
   getBookmarkUiStateShardStorageKey,
-  getPopupLayoutShardStorageKey
-} from './bookmarks.js';
+  getPopupLayoutShardStorageKey,
+} from "./bookmarks.js";
+import type {
+  Bookmark,
+  BookmarkUiStateEntry,
+  BookmarkUiStateMap,
+  PopupLayout,
+  PopupLayoutMap,
+} from "../types/bookmark.js";
+
+type ExpandedBookmarkSyncOptions = {
+  full: boolean;
+};
+
+interface UiStateCallbacks {
+  releaseResizeLockedExpandedBookmarkForInteraction?:
+    | ((bookmarkId: string) => void)
+    | null;
+  syncExpandedBookmarkState?:
+    | ((options: ExpandedBookmarkSyncOptions) => void)
+    | null;
+  syncHistoryControls?: (() => void) | null;
+  pushStateChangeEntry?: ((action: string) => void) | null;
+  normalizePopupLayout?: ((value: unknown) => PopupLayout | null) | null;
+  preCollapseGuard?: (() => void) | null;
+}
+
+interface CollapseBackup {
+  pinnedBookmarkIds: string[];
+  expandedPinnedBookmarkIds: string[];
+  expandedPopupContentBookmarkIds: string[];
+  urlKey: string;
+}
 
 // ---- 콜백 주입 (순환 의존 방지) ----
 // UI layer (store → ui 방향 금지)
-let _releaseResizeLockedExpandedBookmarkForInteraction = null;
-let _syncExpandedBookmarkState = null;
-let _syncHistoryControls = null;
-let _pushStateChangeEntry = null;
+let _releaseResizeLockedExpandedBookmarkForInteraction:
+  | ((bookmarkId: string) => void)
+  | null = null;
+let _syncExpandedBookmarkState:
+  | ((options: ExpandedBookmarkSyncOptions) => void)
+  | null = null;
+let _syncHistoryControls: (() => void) | null = null;
+let _pushStateChangeEntry: ((action: string) => void) | null = null;
 
 // popup.js (DOM 측정 체인 포함)
-let _normalizePopupLayout = null;
+let _normalizePopupLayout: ((value: unknown) => PopupLayout | null) | null =
+  null;
 
 // pre-collapse guard (rail.js 측 잠금 해제용)
-let _preCollapseGuard = null;
+let _preCollapseGuard: (() => void) | null = null;
 
-export function setUiStateCallbacks(callbacks) {
-  _releaseResizeLockedExpandedBookmarkForInteraction = callbacks.releaseResizeLockedExpandedBookmarkForInteraction || null;
+export function setUiStateCallbacks(callbacks: UiStateCallbacks): void {
+  _releaseResizeLockedExpandedBookmarkForInteraction =
+    callbacks.releaseResizeLockedExpandedBookmarkForInteraction || null;
   _syncExpandedBookmarkState = callbacks.syncExpandedBookmarkState || null;
   _syncHistoryControls = callbacks.syncHistoryControls || null;
   _pushStateChangeEntry = callbacks.pushStateChangeEntry || null;
@@ -36,50 +73,59 @@ export function setUiStateCallbacks(callbacks) {
 
 // ---- Collapse/Expand-all 백업 (메모리 전용, 비영속) ----
 // 상호 배타: 한쪽 백업이 존재하면 다른 쪽은 활성화 불가
-let _collapseBackup = null;
+let _collapseBackup: CollapseBackup | null = null;
 // _expandBackup / _expandPhase 제거됨 — 독립 버튼 방식으로 전환
 
-export function invalidateAllBulkBackups() {
+export function invalidateAllBulkBackups(): void {
   _collapseBackup = null;
 }
 
-export function hasCollapseBackup() {
+export function hasCollapseBackup(): boolean {
   return _collapseBackup !== null;
 }
 
-export function hasExpandBackup() {
+export function hasExpandBackup(): boolean {
   return false;
 }
 
-export function hasExpandedPinnedState() {
+export function hasExpandedPinnedState(): boolean {
   return Boolean(
-    (Array.isArray(state.pinnedBookmarkIds) && state.pinnedBookmarkIds.length) ||
-    (Array.isArray(state.expandedPinnedBookmarkIds) && state.expandedPinnedBookmarkIds.length) ||
-    (Array.isArray(state.expandedPopupContentBookmarkIds) && state.expandedPopupContentBookmarkIds.length)
+    (Array.isArray(state.pinnedBookmarkIds) &&
+      state.pinnedBookmarkIds.length) ||
+    (Array.isArray(state.expandedPinnedBookmarkIds) &&
+      state.expandedPinnedBookmarkIds.length) ||
+    (Array.isArray(state.expandedPopupContentBookmarkIds) &&
+      state.expandedPopupContentBookmarkIds.length),
   );
 }
 
-function hasCollapsedBookmarks() {
+function hasCollapsedBookmarks(): boolean {
   const currentIds = Array.isArray(state.currentBookmarks)
-    ? state.currentBookmarks.map(function (b) { return b.id; })
+    ? state.currentBookmarks.map(function (b) {
+        return b.id;
+      })
     : [];
   if (!currentIds.length) return false;
-  const pinned = Array.isArray(state.pinnedBookmarkIds) ? state.pinnedBookmarkIds : [];
-  const expanded = Array.isArray(state.expandedPinnedBookmarkIds) ? state.expandedPinnedBookmarkIds : [];
+  const pinned = Array.isArray(state.pinnedBookmarkIds)
+    ? state.pinnedBookmarkIds
+    : [];
+  const expanded = Array.isArray(state.expandedPinnedBookmarkIds)
+    ? state.expandedPinnedBookmarkIds
+    : [];
   return currentIds.some(function (id) {
     return pinned.indexOf(id) < 0 || expanded.indexOf(id) < 0;
   });
 }
 
-export function canCollapseAll() {
+export function canCollapseAll(): boolean {
   return !_collapseBackup && hasExpandedPinnedState();
 }
 
-export function canExpandAll() {
+export function canExpandAll(): boolean {
   return hasCollapsedBookmarks();
 }
 
-export async function collapseAllBookmarks() {
+export async function collapseAllBookmarks(): Promise<void> {
   if (!hasExpandedPinnedState()) {
     return;
   }
@@ -87,13 +133,19 @@ export async function collapseAllBookmarks() {
   if (_pushStateChangeEntry) _pushStateChangeEntry("collapse-all");
   if (_preCollapseGuard) _preCollapseGuard();
 
-
-
   _collapseBackup = {
-    pinnedBookmarkIds: (Array.isArray(state.pinnedBookmarkIds) ? state.pinnedBookmarkIds.slice() : []),
-    expandedPinnedBookmarkIds: (Array.isArray(state.expandedPinnedBookmarkIds) ? state.expandedPinnedBookmarkIds.slice() : []),
-    expandedPopupContentBookmarkIds: (Array.isArray(state.expandedPopupContentBookmarkIds) ? state.expandedPopupContentBookmarkIds.slice() : []),
-    urlKey: state.currentUrlKey
+    pinnedBookmarkIds: Array.isArray(state.pinnedBookmarkIds)
+      ? state.pinnedBookmarkIds.slice()
+      : [],
+    expandedPinnedBookmarkIds: Array.isArray(state.expandedPinnedBookmarkIds)
+      ? state.expandedPinnedBookmarkIds.slice()
+      : [],
+    expandedPopupContentBookmarkIds: Array.isArray(
+      state.expandedPopupContentBookmarkIds,
+    )
+      ? state.expandedPopupContentBookmarkIds.slice()
+      : [],
+    urlKey: state.currentUrlKey,
   };
 
   state.pinnedBookmarkIds = [];
@@ -103,7 +155,7 @@ export async function collapseAllBookmarks() {
   await persistBookmarkUiState();
 }
 
-export async function restoreCollapsedBookmarks() {
+export async function restoreCollapsedBookmarks(): Promise<void> {
   if (!_collapseBackup) {
     return;
   }
@@ -114,8 +166,10 @@ export async function restoreCollapsedBookmarks() {
   }
 
   state.pinnedBookmarkIds = _collapseBackup.pinnedBookmarkIds.slice();
-  state.expandedPinnedBookmarkIds = _collapseBackup.expandedPinnedBookmarkIds.slice();
-  state.expandedPopupContentBookmarkIds = _collapseBackup.expandedPopupContentBookmarkIds.slice();
+  state.expandedPinnedBookmarkIds =
+    _collapseBackup.expandedPinnedBookmarkIds.slice();
+  state.expandedPopupContentBookmarkIds =
+    _collapseBackup.expandedPopupContentBookmarkIds.slice();
   _collapseBackup = null;
   if (_syncExpandedBookmarkState) _syncExpandedBookmarkState({ full: true });
   await persistBookmarkUiState();
@@ -124,9 +178,11 @@ export async function restoreCollapsedBookmarks() {
 // ---- 독립 버튼: Tab Extension / Post-it Extension ----
 
 // Tab Extension: pin on/off 토글 (post-it 건드리지 않음)
-export async function expandAllBookmarks() {
+export async function expandAllBookmarks(): Promise<void> {
   const currentIds = Array.isArray(state.currentBookmarks)
-    ? state.currentBookmarks.map(function (b) { return b.id; })
+    ? state.currentBookmarks.map(function (b) {
+        return b.id;
+      })
     : [];
   if (!currentIds.length) {
     return;
@@ -146,27 +202,37 @@ export async function expandAllBookmarks() {
 }
 
 // 모두 pinned 여부
-export function isAllPinned() {
+export function isAllPinned(): boolean {
   var currentIds = Array.isArray(state.currentBookmarks)
-    ? state.currentBookmarks.map(function (b) { return b.id; })
+    ? state.currentBookmarks.map(function (b) {
+        return b.id;
+      })
     : [];
   if (!currentIds.length) return false;
-  var expanded = Array.isArray(state.expandedPinnedBookmarkIds) ? state.expandedPinnedBookmarkIds : [];
-  return currentIds.every(function (id) { return expanded.indexOf(id) >= 0; });
+  var expanded = Array.isArray(state.expandedPinnedBookmarkIds)
+    ? state.expandedPinnedBookmarkIds
+    : [];
+  return currentIds.every(function (id) {
+    return expanded.indexOf(id) >= 0;
+  });
 }
 
 // Tab Extension disabled 조건: 북마크 없을 때만
-export function canExpandAllTabs() {
+export function canExpandAllTabs(): boolean {
   var currentIds = Array.isArray(state.currentBookmarks)
-    ? state.currentBookmarks.map(function (b) { return b.id; })
+    ? state.currentBookmarks.map(function (b) {
+        return b.id;
+      })
     : [];
   return currentIds.length > 0;
 }
 
 // Post-it Extension: on/off 토글 (pin 건드리지 않음)
-export async function expandAllPostits() {
+export async function expandAllPostits(): Promise<void> {
   const currentIds = Array.isArray(state.currentBookmarks)
-    ? state.currentBookmarks.map(function (b) { return b.id; })
+    ? state.currentBookmarks.map(function (b) {
+        return b.id;
+      })
     : [];
   if (!currentIds.length) {
     return;
@@ -183,19 +249,27 @@ export async function expandAllPostits() {
 }
 
 // 모든 post-it 표시 여부
-export function isAllPostits() {
+export function isAllPostits(): boolean {
   var currentIds = Array.isArray(state.currentBookmarks)
-    ? state.currentBookmarks.map(function (b) { return b.id; })
+    ? state.currentBookmarks.map(function (b) {
+        return b.id;
+      })
     : [];
   if (!currentIds.length) return false;
-  var pinned = Array.isArray(state.pinnedBookmarkIds) ? state.pinnedBookmarkIds : [];
-  return currentIds.every(function (id) { return pinned.indexOf(id) >= 0; });
+  var pinned = Array.isArray(state.pinnedBookmarkIds)
+    ? state.pinnedBookmarkIds
+    : [];
+  return currentIds.every(function (id) {
+    return pinned.indexOf(id) >= 0;
+  });
 }
 
 // Post-it Extension disabled 조건: 북마크 없을 때만
-export function canExpandAllPostits() {
+export function canExpandAllPostits(): boolean {
   var currentIds = Array.isArray(state.currentBookmarks)
-    ? state.currentBookmarks.map(function (b) { return b.id; })
+    ? state.currentBookmarks.map(function (b) {
+        return b.id;
+      })
     : [];
   return currentIds.length > 0;
 }
@@ -204,7 +278,9 @@ export function canExpandAllPostits() {
 // 북마크 ID 유틸
 // ============================================================
 
-export function buildKnownBookmarkIdMap(bookmarks) {
+export function buildKnownBookmarkIdMap(
+  bookmarks: Bookmark[],
+): Record<string, boolean> {
   const knownBookmarkIds = {};
   (Array.isArray(bookmarks) ? bookmarks : []).forEach(function (bookmark) {
     if (bookmark && bookmark.id) {
@@ -214,7 +290,7 @@ export function buildKnownBookmarkIdMap(bookmarks) {
   return knownBookmarkIds;
 }
 
-function getBookmarkIdList(bookmarks) {
+function getBookmarkIdList(bookmarks: Bookmark[]): string[] {
   return (Array.isArray(bookmarks) ? bookmarks : [])
     .map(function (bookmark) {
       return bookmark && bookmark.id ? bookmark.id : "";
@@ -222,8 +298,12 @@ function getBookmarkIdList(bookmarks) {
     .filter(Boolean);
 }
 
-function areBookmarkIdListsEqual(left, right) {
-  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+function areBookmarkIdListsEqual(left: string[], right: string[]): boolean {
+  if (
+    !Array.isArray(left) ||
+    !Array.isArray(right) ||
+    left.length !== right.length
+  ) {
     return false;
   }
 
@@ -240,7 +320,10 @@ function areBookmarkIdListsEqual(left, right) {
 // Interaction ID 관리
 // ============================================================
 
-export function sanitizeBookmarkInteractionId(bookmarkId, knownBookmarkIds) {
+export function sanitizeBookmarkInteractionId(
+  bookmarkId: string,
+  knownBookmarkIds?: Record<string, boolean>,
+): string {
   if (!bookmarkId) {
     return "";
   }
@@ -252,7 +335,10 @@ export function sanitizeBookmarkInteractionId(bookmarkId, knownBookmarkIds) {
   return "";
 }
 
-export function sanitizeBookmarkInteractionIds(bookmarkIds, knownBookmarkIds) {
+export function sanitizeBookmarkInteractionIds(
+  bookmarkIds: string[],
+  knownBookmarkIds?: Record<string, boolean>,
+): string[] {
   if (!Array.isArray(bookmarkIds) || !bookmarkIds.length) {
     return [];
   }
@@ -270,7 +356,10 @@ export function sanitizeBookmarkInteractionIds(bookmarkIds, knownBookmarkIds) {
   });
 }
 
-export function removeBookmarkInteractionId(bookmarkIds, bookmarkId) {
+export function removeBookmarkInteractionId(
+  bookmarkIds: string[],
+  bookmarkId: string,
+): string[] {
   if (!Array.isArray(bookmarkIds) || !bookmarkIds.length) {
     return [];
   }
@@ -284,9 +373,16 @@ export function removeBookmarkInteractionId(bookmarkIds, bookmarkId) {
 // 수동 정렬
 // ============================================================
 
-function getDisplayOrderedBookmarks(bookmarks, manualOrderBookmarkIds) {
+function getDisplayOrderedBookmarks(
+  bookmarks: Bookmark[],
+  manualOrderBookmarkIds: string[],
+): Bookmark[] {
   const source = Array.isArray(bookmarks) ? bookmarks.slice() : [];
-  if (!source.length || !Array.isArray(manualOrderBookmarkIds) || !manualOrderBookmarkIds.length) {
+  if (
+    !source.length ||
+    !Array.isArray(manualOrderBookmarkIds) ||
+    !manualOrderBookmarkIds.length
+  ) {
     return source;
   }
 
@@ -300,7 +396,11 @@ function getDisplayOrderedBookmarks(bookmarks, manualOrderBookmarkIds) {
   const ordered = [];
   const usedBookmarkIds = {};
   manualOrderBookmarkIds.forEach(function (bookmarkId) {
-    if (!bookmarkId || usedBookmarkIds[bookmarkId] || !bookmarkById[bookmarkId]) {
+    if (
+      !bookmarkId ||
+      usedBookmarkIds[bookmarkId] ||
+      !bookmarkById[bookmarkId]
+    ) {
       return;
     }
 
@@ -319,20 +419,28 @@ function getDisplayOrderedBookmarks(bookmarks, manualOrderBookmarkIds) {
   return ordered;
 }
 
-export function normalizeManualOrderBookmarkIds(bookmarks, manualOrderBookmarkIds) {
+export function normalizeManualOrderBookmarkIds(
+  bookmarks: Bookmark[],
+  manualOrderBookmarkIds: string[],
+): string[] {
   const source = Array.isArray(bookmarks) ? bookmarks.slice() : [];
   if (!source.length) {
     return [];
   }
 
   const knownBookmarkIds = buildKnownBookmarkIdMap(source);
-  const sanitizedManualOrder = sanitizeBookmarkInteractionIds(manualOrderBookmarkIds, knownBookmarkIds);
+  const sanitizedManualOrder = sanitizeBookmarkInteractionIds(
+    manualOrderBookmarkIds,
+    knownBookmarkIds,
+  );
   if (!sanitizedManualOrder.length) {
     return [];
   }
 
   const defaultIds = getBookmarkIdList(source);
-  const orderedIds = getBookmarkIdList(getDisplayOrderedBookmarks(source, sanitizedManualOrder));
+  const orderedIds = getBookmarkIdList(
+    getDisplayOrderedBookmarks(source, sanitizedManualOrder),
+  );
   if (!orderedIds.length || areBookmarkIdListsEqual(defaultIds, orderedIds)) {
     return [];
   }
@@ -344,7 +452,9 @@ export function normalizeManualOrderBookmarkIds(bookmarks, manualOrderBookmarkId
 // UI State 정규화 + 영속화
 // ============================================================
 
-export function normalizeBookmarkUiStateMap(value) {
+export function normalizeBookmarkUiStateMap(
+  value: unknown,
+): BookmarkUiStateMap {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
@@ -372,32 +482,50 @@ export function normalizeBookmarkUiStateMap(value) {
   return normalized;
 }
 
-export function normalizeBookmarkUiStateEntry(value) {
+export function normalizeBookmarkUiStateEntry(
+  value: any,
+): BookmarkUiStateEntry {
   const entry = value && typeof value === "object" ? value : {};
   return {
     pinnedBookmarkIds: sanitizeBookmarkInteractionIds(entry.pinnedBookmarkIds),
-    expandedPinnedBookmarkIds: sanitizeBookmarkInteractionIds(entry.expandedPinnedBookmarkIds),
-    expandedPopupContentBookmarkIds: sanitizeBookmarkInteractionIds(entry.expandedPopupContentBookmarkIds),
-    manualOrderBookmarkIds: sanitizeBookmarkInteractionIds(entry.manualOrderBookmarkIds)
+    expandedPinnedBookmarkIds: sanitizeBookmarkInteractionIds(
+      entry.expandedPinnedBookmarkIds,
+    ),
+    expandedPopupContentBookmarkIds: sanitizeBookmarkInteractionIds(
+      entry.expandedPopupContentBookmarkIds,
+    ),
+    manualOrderBookmarkIds: sanitizeBookmarkInteractionIds(
+      entry.manualOrderBookmarkIds,
+    ),
   };
 }
 
-export function hasMeaningfulBookmarkUiStateEntry(entry) {
+export function hasMeaningfulBookmarkUiStateEntry(
+  entry: BookmarkUiStateEntry | null | undefined,
+): boolean {
   return Boolean(
     entry &&
-    (
-      (Array.isArray(entry.pinnedBookmarkIds) && entry.pinnedBookmarkIds.length) ||
-      (Array.isArray(entry.expandedPinnedBookmarkIds) && entry.expandedPinnedBookmarkIds.length) ||
-      (Array.isArray(entry.expandedPopupContentBookmarkIds) && entry.expandedPopupContentBookmarkIds.length) ||
-      (Array.isArray(entry.manualOrderBookmarkIds) && entry.manualOrderBookmarkIds.length)
-    )
+    ((Array.isArray(entry.pinnedBookmarkIds) &&
+      entry.pinnedBookmarkIds.length) ||
+      (Array.isArray(entry.expandedPinnedBookmarkIds) &&
+        entry.expandedPinnedBookmarkIds.length) ||
+      (Array.isArray(entry.expandedPopupContentBookmarkIds) &&
+        entry.expandedPopupContentBookmarkIds.length) ||
+      (Array.isArray(entry.manualOrderBookmarkIds) &&
+        entry.manualOrderBookmarkIds.length)),
   );
 }
 
-export function buildSingleBookmarkUiStateObject(urlKey, entry) {
+export function buildSingleBookmarkUiStateObject(
+  urlKey: string,
+  entry: unknown,
+): BookmarkUiStateMap {
   const normalizedUrlKey = normalizeUrlKey(urlKey);
   const normalizedEntry = normalizeBookmarkUiStateEntry(entry);
-  if (!normalizedUrlKey || !hasMeaningfulBookmarkUiStateEntry(normalizedEntry)) {
+  if (
+    !normalizedUrlKey ||
+    !hasMeaningfulBookmarkUiStateEntry(normalizedEntry)
+  ) {
     return {};
   }
 
@@ -406,26 +534,40 @@ export function buildSingleBookmarkUiStateObject(urlKey, entry) {
   return nextState;
 }
 
-function getCurrentBookmarkUiStateEntry() {
+function getCurrentBookmarkUiStateEntry(): BookmarkUiStateEntry {
   return normalizeBookmarkUiStateEntry({
     pinnedBookmarkIds: state.pinnedBookmarkIds,
     expandedPinnedBookmarkIds: state.expandedPinnedBookmarkIds,
     expandedPopupContentBookmarkIds: state.expandedPopupContentBookmarkIds,
-    manualOrderBookmarkIds: state.manualOrderBookmarkIds
+    manualOrderBookmarkIds: state.manualOrderBookmarkIds,
   });
 }
 
-export function applyCurrentBookmarkUiState() {
+export function applyCurrentBookmarkUiState(): void {
   invalidateAllBulkBackups();
-  const entry = normalizeBookmarkUiStateEntry(state.bookmarkUiStateByUrl[state.currentUrlKey]);
+  const entry = normalizeBookmarkUiStateEntry(
+    state.bookmarkUiStateByUrl[state.currentUrlKey],
+  );
   const knownBookmarkIds = buildKnownBookmarkIdMap(state.currentBookmarks);
-  state.pinnedBookmarkIds = sanitizeBookmarkInteractionIds(entry.pinnedBookmarkIds, knownBookmarkIds);
-  state.expandedPinnedBookmarkIds = sanitizeBookmarkInteractionIds(entry.expandedPinnedBookmarkIds, knownBookmarkIds);
-  state.expandedPopupContentBookmarkIds = sanitizeBookmarkInteractionIds(entry.expandedPopupContentBookmarkIds, knownBookmarkIds);
-  state.manualOrderBookmarkIds = normalizeManualOrderBookmarkIds(state.currentBookmarks, entry.manualOrderBookmarkIds);
+  state.pinnedBookmarkIds = sanitizeBookmarkInteractionIds(
+    entry.pinnedBookmarkIds,
+    knownBookmarkIds,
+  );
+  state.expandedPinnedBookmarkIds = sanitizeBookmarkInteractionIds(
+    entry.expandedPinnedBookmarkIds,
+    knownBookmarkIds,
+  );
+  state.expandedPopupContentBookmarkIds = sanitizeBookmarkInteractionIds(
+    entry.expandedPopupContentBookmarkIds,
+    knownBookmarkIds,
+  );
+  state.manualOrderBookmarkIds = normalizeManualOrderBookmarkIds(
+    state.currentBookmarks,
+    entry.manualOrderBookmarkIds,
+  );
 }
 
-export async function persistBookmarkUiState() {
+export async function persistBookmarkUiState(): Promise<void> {
   const entry = getCurrentBookmarkUiStateEntry();
   const normalizedUrlKey = normalizeUrlKey(state.currentUrlKey);
   const uiStateKey = getBookmarkUiStateShardStorageKey(normalizedUrlKey);
@@ -434,7 +576,10 @@ export async function persistBookmarkUiState() {
     return;
   }
 
-  state.bookmarkUiStateByUrl = buildSingleBookmarkUiStateObject(normalizedUrlKey, entry);
+  state.bookmarkUiStateByUrl = buildSingleBookmarkUiStateObject(
+    normalizedUrlKey,
+    entry,
+  );
   state.bookmarkUiStateReloadSuppressAt = Date.now();
 
   if (!hasMeaningfulBookmarkUiStateEntry(entry)) {
@@ -451,7 +596,7 @@ export async function persistBookmarkUiState() {
 // 핀/확장 토글
 // ============================================================
 
-export async function togglePinnedBookmark(bookmarkId) {
+export async function togglePinnedBookmark(bookmarkId: string): Promise<void> {
   const nextBookmarkId = bookmarkId || "";
   if (!nextBookmarkId) {
     return;
@@ -459,8 +604,11 @@ export async function togglePinnedBookmark(bookmarkId) {
 
   if (_pushStateChangeEntry) _pushStateChangeEntry("toggle-pin");
   invalidateAllBulkBackups();
-  if (_releaseResizeLockedExpandedBookmarkForInteraction) _releaseResizeLockedExpandedBookmarkForInteraction(nextBookmarkId);
-  const pinnedBookmarkIds = Array.isArray(state.pinnedBookmarkIds) ? state.pinnedBookmarkIds.slice() : [];
+  if (_releaseResizeLockedExpandedBookmarkForInteraction)
+    _releaseResizeLockedExpandedBookmarkForInteraction(nextBookmarkId);
+  const pinnedBookmarkIds = Array.isArray(state.pinnedBookmarkIds)
+    ? state.pinnedBookmarkIds.slice()
+    : [];
   const pinnedIndex = pinnedBookmarkIds.indexOf(nextBookmarkId);
   if (pinnedIndex >= 0) {
     pinnedBookmarkIds.splice(pinnedIndex, 1);
@@ -474,7 +622,9 @@ export async function togglePinnedBookmark(bookmarkId) {
   await persistBookmarkUiState();
 }
 
-export async function toggleExpandedPinnedBookmark(bookmarkId) {
+export async function toggleExpandedPinnedBookmark(
+  bookmarkId: string,
+): Promise<void> {
   const nextBookmarkId = bookmarkId || "";
   if (!nextBookmarkId) {
     return;
@@ -482,8 +632,11 @@ export async function toggleExpandedPinnedBookmark(bookmarkId) {
 
   if (_pushStateChangeEntry) _pushStateChangeEntry("toggle-expand");
   invalidateAllBulkBackups();
-  if (_releaseResizeLockedExpandedBookmarkForInteraction) _releaseResizeLockedExpandedBookmarkForInteraction(nextBookmarkId);
-  const expandedPinnedBookmarkIds = Array.isArray(state.expandedPinnedBookmarkIds)
+  if (_releaseResizeLockedExpandedBookmarkForInteraction)
+    _releaseResizeLockedExpandedBookmarkForInteraction(nextBookmarkId);
+  const expandedPinnedBookmarkIds = Array.isArray(
+    state.expandedPinnedBookmarkIds,
+  )
     ? state.expandedPinnedBookmarkIds.slice()
     : [];
   const pinnedIndex = expandedPinnedBookmarkIds.indexOf(nextBookmarkId);
@@ -499,20 +652,35 @@ export async function toggleExpandedPinnedBookmark(bookmarkId) {
   await persistBookmarkUiState();
 }
 
-export function isBookmarkPopupPinned(bookmarkId) {
-  return Boolean(bookmarkId && Array.isArray(state.pinnedBookmarkIds) && state.pinnedBookmarkIds.indexOf(bookmarkId) >= 0);
+export function isBookmarkPopupPinned(bookmarkId: string): boolean {
+  return Boolean(
+    bookmarkId &&
+    Array.isArray(state.pinnedBookmarkIds) &&
+    state.pinnedBookmarkIds.indexOf(bookmarkId) >= 0,
+  );
 }
 
-export function isBookmarkExpansionPinned(bookmarkId) {
-  return Boolean(bookmarkId && Array.isArray(state.expandedPinnedBookmarkIds) && state.expandedPinnedBookmarkIds.indexOf(bookmarkId) >= 0);
+export function isBookmarkExpansionPinned(bookmarkId: string): boolean {
+  return Boolean(
+    bookmarkId &&
+    Array.isArray(state.expandedPinnedBookmarkIds) &&
+    state.expandedPinnedBookmarkIds.indexOf(bookmarkId) >= 0,
+  );
 }
 
 // ============================================================
 // 팝업 레이아웃 영속화
 // ============================================================
 
-export function deletePopupLayout(bookmarkId) {
-  if (!bookmarkId || !state.popupLayoutByBookmarkId || !Object.prototype.hasOwnProperty.call(state.popupLayoutByBookmarkId, bookmarkId)) {
+export function deletePopupLayout(bookmarkId: string): boolean {
+  if (
+    !bookmarkId ||
+    !state.popupLayoutByBookmarkId ||
+    !Object.prototype.hasOwnProperty.call(
+      state.popupLayoutByBookmarkId,
+      bookmarkId,
+    )
+  ) {
     return false;
   }
 
@@ -522,14 +690,16 @@ export function deletePopupLayout(bookmarkId) {
   return true;
 }
 
-export function normalizePopupLayoutMap(value) {
+export function normalizePopupLayoutMap(value: unknown): PopupLayoutMap {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
 
   const normalized = {};
   Object.keys(value).forEach(function (bookmarkId) {
-    const layout = _normalizePopupLayout ? _normalizePopupLayout(value[bookmarkId]) : null;
+    const layout = _normalizePopupLayout
+      ? _normalizePopupLayout(value[bookmarkId])
+      : null;
     if (!layout) {
       return;
     }
@@ -538,7 +708,7 @@ export function normalizePopupLayoutMap(value) {
   return normalized;
 }
 
-export async function persistPopupLayouts() {
+export async function persistPopupLayouts(): Promise<void> {
   const normalizedUrlKey = normalizeUrlKey(state.currentUrlKey);
   const popupLayoutKey = getPopupLayoutShardStorageKey(normalizedUrlKey);
   if (!normalizedUrlKey || !popupLayoutKey) {
@@ -548,17 +718,21 @@ export async function persistPopupLayouts() {
   state.popupLayoutReloadSuppressAt = Date.now();
 
   const knownBookmarkIds = new Set(
-    state.currentBookmarks.map(function (bookmark) {
-      return bookmark && bookmark.id ? bookmark.id : "";
-    }).filter(Boolean)
+    state.currentBookmarks
+      .map(function (bookmark) {
+        return bookmark && bookmark.id ? bookmark.id : "";
+      })
+      .filter(Boolean),
   );
-  const nextLayouts = {};
-  Object.keys(normalizePopupLayoutMap(state.popupLayoutByBookmarkId)).forEach(function (bookmarkId) {
-    if (!knownBookmarkIds.has(bookmarkId)) {
-      return;
-    }
-    nextLayouts[bookmarkId] = state.popupLayoutByBookmarkId[bookmarkId];
-  });
+  const nextLayouts: PopupLayoutMap = {};
+  Object.keys(normalizePopupLayoutMap(state.popupLayoutByBookmarkId)).forEach(
+    function (bookmarkId) {
+      if (!knownBookmarkIds.has(bookmarkId)) {
+        return;
+      }
+      nextLayouts[bookmarkId] = state.popupLayoutByBookmarkId[bookmarkId];
+    },
+  );
   state.popupLayoutByBookmarkId = normalizePopupLayoutMap(nextLayouts);
 
   if (!Object.keys(state.popupLayoutByBookmarkId).length) {
@@ -567,6 +741,8 @@ export async function persistPopupLayouts() {
   }
 
   const payload = {};
-  payload[popupLayoutKey] = normalizePopupLayoutMap(state.popupLayoutByBookmarkId);
+  payload[popupLayoutKey] = normalizePopupLayoutMap(
+    state.popupLayoutByBookmarkId,
+  );
   await storageSet(payload);
 }
