@@ -13,12 +13,12 @@
     "build:all": "mkdir -p dist && npm run build && npm run build:css && npm run build:fonts && npm run build:icons && npm run build:manifest",
     "watch": "esbuild src/content.js --bundle --outfile=dist/content.js --format=iife --target=chrome110 --watch",
     "dev": "npm run build:all && npm run watch",
-    "lint": "eslint eslint.config.js src/constants.js src/rail/*.js src/state.js src/storage.js src/text.js test/*.js",
-    "format": "prettier --write .sisyphus/plans/chatmark-improvements.md .github/workflows/ci.yml eslint.config.js package.json src/constants.js src/content.css src/content.js src/rail.js src/rail/*.js src/state.js src/storage.js src/text.js test/*.js tsconfig.json types/chrome.d.ts",
-    "format:check": "prettier --check .sisyphus/plans/chatmark-improvements.md .github/workflows/ci.yml eslint.config.js package.json src/constants.js src/content.css src/content.js src/rail.js src/rail/*.js src/state.js src/storage.js src/text.js test/*.js tsconfig.json types/chrome.d.ts",
+    "lint": "eslint eslint.config.js \"src/**/*.js\" \"test/**/*.js\"",
+    "format": "prettier --write \"**/*.js\" \"**/*.ts\" \"**/*.json\" \"**/*.css\" \"**/*.md\" \"**/*.yml\" \"!dist/**\" \"!node_modules/**\"",
+    "format:check": "prettier --check \"**/*.js\" \"**/*.ts\" \"**/*.json\" \"**/*.css\" \"**/*.md\" \"**/*.yml\" \"!dist/**\" \"!node_modules/**\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:unit": "node --test test/*.test.js",
-    "test:stability": "node test/storage-key-stability.js",
+    "test:unit": "tsx --test \"test/*.test.js\" \"test/*.test.ts\"",
+    "test:stability": "tsx test/storage-key-stability.js",
     "test": "npm run test:unit && npm run test:stability",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build:all"
   },
@@ -27,6 +27,7 @@
     "esbuild": "^0.21.0",
     "eslint": "^10.1.0",
     "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.2"
   }
 }

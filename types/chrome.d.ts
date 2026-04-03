@@ -8,6 +8,15 @@ declare const chrome: {
       set(items: Record<string, unknown>, callback: () => void): void;
       remove(keys: string | string[], callback: () => void): void;
     };
+    onChanged: {
+      addListener(
+        callback: (
+          changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,
+          areaName: string,
+        ) => void,
+      ): void;
+      removeListener(callback: () => void): void;
+    };
   };
   runtime: {
     lastError?: {
@@ -15,6 +24,12 @@ declare const chrome: {
     };
   };
 };
+
+declare global {
+  interface Window {
+    __cgptBookmarkTabsInitialized?: boolean;
+  }
+}
 
 interface GlobalThis {
   chrome: typeof chrome;
