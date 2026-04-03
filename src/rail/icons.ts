@@ -1,6 +1,34 @@
 import { createSvgElement } from "../dom.js";
 
-export function createBookmarkHistoryIcon(direction) {
+export type HistoryDirection =
+  | "undo"
+  | "redo"
+  | "collapse"
+  | "expand"
+  | "restore";
+
+export type ButtonIconType =
+  | "tab-collapse"
+  | "tab-extend"
+  | "tab-extend-hover"
+  | "tab-extend-disabled"
+  | "postit-extend"
+  | "postit-extend-phase2"
+  | "postit-extend-outward"
+  | "postit-close-hover"
+  | "postit-open-hover"
+  | "postit-extend-inward";
+
+export type TabActionIcon = "expand-pin" | "edit";
+
+export interface TabAction {
+  label?: string;
+  icon?: string;
+}
+
+export function createBookmarkHistoryIcon(
+  direction: HistoryDirection,
+): HTMLSpanElement {
   const icon = document.createElement("span");
   icon.className = "cgptbm-history-controls__icon";
   icon.setAttribute("aria-hidden", "true");
@@ -18,7 +46,7 @@ export function createBookmarkHistoryIcon(direction) {
   return icon;
 }
 
-export function createButtonSvgIcon(type) {
+export function createButtonSvgIcon(type: ButtonIconType): HTMLSpanElement {
   const icon = document.createElement("span");
   icon.className =
     "cgptbm-history-controls__icon cgptbm-history-controls__icon--svg";
@@ -57,7 +85,10 @@ export function createButtonSvgIcon(type) {
   return icon;
 }
 
-export function renderTabActionButtonContent(button, action) {
+export function renderTabActionButtonContent(
+  button: HTMLButtonElement,
+  action?: TabAction,
+): void {
   if (!(button instanceof HTMLButtonElement)) {
     return;
   }
@@ -84,7 +115,7 @@ export function renderTabActionButtonContent(button, action) {
   button.appendChild(iconElement);
 }
 
-export function buildTabActionIcon(icon) {
+export function buildTabActionIcon(icon: string): SVGSVGElement | null {
   const iconType = String(icon || "");
   if (!iconType) {
     return null;

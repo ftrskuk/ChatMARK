@@ -1,20 +1,26 @@
 import { normalizeText } from "../text.js";
 import { MAX_BOOKMARKS_PER_PAGE } from "../constants.js";
 import { getDisplayOrderedBookmarks } from "./ordering.js";
+import type { Bookmark } from "../../types/bookmark.js";
 
-export function getNormalizedBookmarkSearchQuery(value) {
+export interface SearchStatusOptions {
+  totalCount?: number;
+  filteredCount?: number;
+  hasQuery?: boolean;
+}
+
+export function getNormalizedBookmarkSearchQuery(value: unknown): string {
   return normalizeText(value).toLowerCase();
 }
 
-export function getBookmarkSearchText(bookmark) {
-  const anchor = bookmark && bookmark.anchor ? bookmark.anchor : null;
+export function getBookmarkSearchText(bookmark: Bookmark): string {
   return [
-    bookmark && bookmark.label,
-    bookmark && bookmark.snippet,
-    anchor && anchor.selectionDisplayText,
-    anchor && anchor.selectionTextRaw,
-    anchor && anchor.selectionText,
-    anchor && anchor.blockTextSnippet,
+    bookmark.label,
+    bookmark.snippet,
+    bookmark.anchor.selectionText,
+    bookmark.anchor.selectionDisplayText,
+    bookmark.anchor.selectionTextRaw,
+    bookmark.anchor.blockTextSnippet,
   ]
     .map(function (value) {
       return getNormalizedBookmarkSearchQuery(value);
@@ -23,7 +29,10 @@ export function getBookmarkSearchText(bookmark) {
     .join(" ");
 }
 
-export function bookmarkMatchesSearchQuery(bookmark, normalizedQuery) {
+export function bookmarkMatchesSearchQuery(
+  bookmark: Bookmark,
+  normalizedQuery: string,
+): boolean {
   if (!bookmark || !normalizedQuery) {
     return !normalizedQuery;
   }
@@ -32,10 +41,10 @@ export function bookmarkMatchesSearchQuery(bookmark, normalizedQuery) {
 }
 
 export function getFilteredBookmarks(
-  currentBookmarks,
-  manualOrderBookmarkIds,
-  bookmarkSearchQuery,
-) {
+  currentBookmarks: Bookmark[],
+  manualOrderBookmarkIds: string[],
+  bookmarkSearchQuery: string,
+): Bookmark[] {
   const normalizedQuery = getNormalizedBookmarkSearchQuery(bookmarkSearchQuery);
   const displayOrderedBookmarks = getDisplayOrderedBookmarks(
     currentBookmarks,
@@ -50,7 +59,9 @@ export function getFilteredBookmarks(
   });
 }
 
-export function getBookmarkSearchStatusText(options) {
+export function getBookmarkSearchStatusText(
+  options?: SearchStatusOptions,
+): string {
   const totalCount = Number(options && options.totalCount) || 0;
   const filteredCount = Number(options && options.filteredCount) || 0;
   const hasQuery = Boolean(options && options.hasQuery);
@@ -69,7 +80,9 @@ export function getBookmarkSearchStatusText(options) {
   return filteredCount + "/" + totalCount + " shown";
 }
 
-export function getBookmarkSearchStatusTitle(options) {
+export function getBookmarkSearchStatusTitle(
+  options?: SearchStatusOptions,
+): string {
   const totalCount = Number(options && options.totalCount) || 0;
   const filteredCount = Number(options && options.filteredCount) || 0;
   const hasQuery = Boolean(options && options.hasQuery);
@@ -101,16 +114,16 @@ export function getBookmarkSearchStatusTitle(options) {
         " saved bookmarks match this search.";
 }
 
-export function highlightMatchInElement(el, query) {
-  var text = el.textContent;
-  var lower = text.toLowerCase();
-  var idx = lower.indexOf(query);
+export function highlightMatchInElement(el: HTMLElement, query: string): void {
+  const text = el.textContent || "";
+  const lower = text.toLowerCase();
+  const idx = lower.indexOf(query);
   if (idx < 0) return;
-  var before = document.createTextNode(text.slice(0, idx));
-  var mark = document.createElement("mark");
+  const before = document.createTextNode(text.slice(0, idx));
+  const mark = document.createElement("mark");
   mark.className = "cgptbm-search-match";
   mark.textContent = text.slice(idx, idx + query.length);
-  var after = document.createTextNode(text.slice(idx + query.length));
+  const after = document.createTextNode(text.slice(idx + query.length));
   el.textContent = "";
   el.appendChild(before);
   el.appendChild(mark);

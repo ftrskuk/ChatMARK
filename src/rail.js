@@ -28,13 +28,13 @@ import {
   computeTabPositions as computeTabPositionsBase,
   getBookmarkIdList,
   getDisplayOrderedBookmarks,
-} from "./rail/ordering.js";
+} from "./rail/ordering.ts";
 import {
   buildTabActionIcon,
   createBookmarkHistoryIcon,
   createButtonSvgIcon,
   renderTabActionButtonContent,
-} from "./rail/icons.js";
+} from "./rail/icons.ts";
 import {
   bookmarkMatchesSearchQuery,
   getBookmarkSearchStatusText,
@@ -42,7 +42,7 @@ import {
   getFilteredBookmarks,
   getNormalizedBookmarkSearchQuery,
   highlightMatchInElement,
-} from "./rail/search-utils.js";
+} from "./rail/search-utils.ts";
 import {
   ROOT_ID,
   TAB_COLORS,

@@ -1,4 +1,30 @@
-export function getDisplayOrderedBookmarks(bookmarks, manualOrderBookmarkIds) {
+import type { Bookmark } from "../../types/bookmark.js";
+
+export interface TabLayoutConfig {
+  topLimit?: number;
+  collapsedHeight?: number;
+  tabStackGap?: number;
+  clamp?: (value: number, min: number, max: number) => number;
+}
+
+export interface TabPositionOptions {
+  expandedBookmarkId?: string;
+  heightByBookmarkId?: Record<string, number> | null;
+  expandedHeight?: number;
+  previewGapIndex?: number;
+  previewGapHeight?: number;
+}
+
+export interface TabPosition {
+  bookmark: Bookmark;
+  top: number;
+  height: number;
+}
+
+export function getDisplayOrderedBookmarks(
+  bookmarks: Bookmark[],
+  manualOrderBookmarkIds: string[],
+): Bookmark[] {
   const source = Array.isArray(bookmarks) ? bookmarks.slice() : [];
   if (
     !source.length ||
@@ -8,15 +34,15 @@ export function getDisplayOrderedBookmarks(bookmarks, manualOrderBookmarkIds) {
     return source;
   }
 
-  const bookmarkById = {};
+  const bookmarkById: Record<string, Bookmark> = {};
   source.forEach(function (bookmark) {
     if (bookmark && bookmark.id) {
       bookmarkById[bookmark.id] = bookmark;
     }
   });
 
-  const ordered = [];
-  const usedBookmarkIds = {};
+  const ordered: Bookmark[] = [];
+  const usedBookmarkIds: Record<string, boolean> = {};
   manualOrderBookmarkIds.forEach(function (bookmarkId) {
     if (
       !bookmarkId ||
@@ -41,7 +67,7 @@ export function getDisplayOrderedBookmarks(bookmarks, manualOrderBookmarkIds) {
   return ordered;
 }
 
-export function getBookmarkIdList(bookmarks) {
+export function getBookmarkIdList(bookmarks: Bookmark[]): string[] {
   return (Array.isArray(bookmarks) ? bookmarks : [])
     .map(function (bookmark) {
       return bookmark && bookmark.id ? bookmark.id : "";
@@ -49,7 +75,10 @@ export function getBookmarkIdList(bookmarks) {
     .filter(Boolean);
 }
 
-export function areBookmarkIdListsEqual(left, right) {
+export function areBookmarkIdListsEqual(
+  left: string[],
+  right: string[],
+): boolean {
   if (
     !Array.isArray(left) ||
     !Array.isArray(right) ||
@@ -67,7 +96,11 @@ export function areBookmarkIdListsEqual(left, right) {
   return true;
 }
 
-export function computeTabPositions(bookmarks, options, layoutConfig) {
+export function computeTabPositions(
+  bookmarks: Bookmark[],
+  options?: TabPositionOptions,
+  layoutConfig?: TabLayoutConfig,
+): TabPosition[] {
   const nextOptions = options || {};
   const nextLayoutConfig = layoutConfig || {};
   const topLimit = Number(nextLayoutConfig.topLimit) || 0;
@@ -81,19 +114,19 @@ export function computeTabPositions(bookmarks, options, layoutConfig) {
       ? nextOptions.heightByBookmarkId
       : null;
   const expandedHeight = Number.isFinite(nextOptions.expandedHeight)
-    ? Math.max(collapsedHeight, Math.ceil(nextOptions.expandedHeight))
+    ? Math.max(collapsedHeight, Math.ceil(nextOptions.expandedHeight as number))
     : collapsedHeight;
   const previewGapIndex = Number.isInteger(nextOptions.previewGapIndex)
     ? typeof clamp === "function"
       ? clamp(
-          nextOptions.previewGapIndex,
+          nextOptions.previewGapIndex as number,
           0,
           Array.isArray(bookmarks) ? bookmarks.length : 0,
         )
       : nextOptions.previewGapIndex
     : -1;
   const previewGapHeight = Number.isFinite(nextOptions.previewGapHeight)
-    ? Math.max(0, Math.ceil(nextOptions.previewGapHeight))
+    ? Math.max(0, Math.ceil(nextOptions.previewGapHeight as number))
     : 0;
   const sorted = bookmarks.map(function (bookmark) {
     return {
